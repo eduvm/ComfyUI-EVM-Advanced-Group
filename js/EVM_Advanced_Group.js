@@ -195,12 +195,12 @@ function gGroupColor(g) {
 
 function gTitleColor(g) {
     migrateLegacyColorsIfNeeded(g);
-    return normalizeHex(g.titleColor || g.color || DEFAULT_GROUP_COLOR);
+    return normalizeHex(g.color || g.titleColor || DEFAULT_GROUP_COLOR);
 }
 
 function gBodyColor(g) {
     migrateLegacyColorsIfNeeded(g);
-    return normalizeHex(g.bodyColor || g.color || DEFAULT_GROUP_COLOR);
+    return normalizeHex(g.color || g.bodyColor || DEFAULT_GROUP_COLOR);
 }
 
 function setEvmGroupColor(g, hexOrNull) {
@@ -3696,10 +3696,175 @@ function initEvmGroupFloatingBar() {
         }
     });
 
-    // Sincroniza também cliques no Color Picker nativo da Selection Toolbox do ComfyUI quando há EVM Groups co-selecionados
+    // ── Integração com Color Picker Nativo do ComfyUI e com EasyKit NodeAlignPro (#hNodeAlignKit) ──
+    const NODE_ALIGN_PRO_COLORS = Object.freeze({
+        colorRed: "#a93232",
+        colorOrange: "#79461d",
+        colorYellow: "#6e6e1d",
+        colorGreen: "#2b652b",
+        colorCyan: "#248382",
+        colorBlue: "#246283",
+        colorPurple: "#3c3c83",
+    });
+
+    function moveEvmGroupWithMembers(g, nextX, nextY) {
+        const targetX = snap(nextX);
+        const targetY = snap(nextY);
+        const dx = targetX - g.x;
+        const dy = targetY - g.y;
+        if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
+        const members = groupMemberNodes(g);
+        const subGroups = containedEvmGroups(g);
+        g.x = targetX;
+        g.y = targetY;
+        for (const sg of subGroups) {
+            sg.x = snap(sg.x + dx);
+            sg.y = snap(sg.y + dy);
+        }
+        for (const n of members) {
+            if (n && n.pos) setNodePos(n, n.pos[0] + dx, n.pos[1] + dy);
+        }
+    }
+
+    function alignSelectedEvmGroups(btnId, groups) {
+        if (!groups || groups.length < 2) return;
+        const list = [...groups];
+        if (btnId === "hBtnA_alignLeft") {
+            const minX = Math.min(...list.map(g => g.x));
+            for (const g of list) moveEvmGroupWithMembers(g, minX, g.y);
+        } else if (btnId === "hBtnC_alignRight") {
+            const maxR = Math.max(...list.map(g => g.x + g.w));
+            for (const g of list) moveEvmGroupWithMembers(g, maxR - g.w, g.y);
+        } else if (btnId === "hBtnB_alignCenterV") {
+            const minX = Math.min(...list.map(g => g.x));
+            const maxR = Math.max(...list.map(g => g.x + g.w));
+            const cx = (minX + maxR) / 2;
+            for (const g of list) moveEvmGroupWithMembers(g, cx - g.w / 2, g.y);
+        } else if (btnId === "hBtnD_alignTop") {
+            const minY = Math.min(...list.map(g => g.y));
+            for (const g of list) moveEvmGroupWithMembers(g, g.x, minY);
+        } else if (btnId === "hBtnF_alignButton") {
+            const maxB = Math.max(...list.map(g => g.y + g.h));
+            for (const g of list) moveEvmGroupWithMembers(g, g.x, maxB - g.h);
+        } else if (btnId === "hBtnE_alignCenterH") {
+            const minY = Math.min(...list.map(g => g.y));
+            const maxB = Math.max(...list.map(g => g.y + g.h));
+            const cy = (minY + maxB) / 2;
+            for (const g of list) moveEvmGroupWithMembers(g, g.x, cy - g.h / 2);
+        } else if (btnId === "hBtnG_distributionH") {
+            list.sort((a, b) => a.x - b.x);
+            const minX = Math.min(...list.map(g => g.x));
+            const maxR = Math.max(...list.map(g => g.x + g.w));
+            const totalW = list.reduce((s, g) => s + g.w, 0);
+            const gap = (maxR - minX - totalW) / (list.length - 1);
+            let curX = minX;
+            for (const g of list) {
+                moveEvmGroupWithMembers(g, curX, g.y);
+                curX += g.w + gap;
+            }
+        } else if (btnId === "hBtnH_distributionV") {
+            list.sort((a, b) => a.y - b.y);
+            const minY = Math.min(...list.map(g => g.y));
+            const maxB = Math.max(...list.map(g => g.y + g.h));
+            const totalH = list.reduce((s, g) => s + g.h, 0);
+            const gap = Math.max(PAD, (maxB - minY - totalH) / (list.length - 1));
+            let curY = minY;
+            for (const g of list) {
+                moveEvmGroupWithMembers(g, g.x, curY);
+                curY += g.h + gap;
+            }
+        } else if (btnId === "hBtnI_equalWidth") {
+            const maxW = snapUp(Math.max(...list.map(g => g.w)));
+            for (const g of list) {
+                if (!g.folded) {
+                    g.w = Math.max(minGroupWidth(g), maxW);
+                    layoutDockedNodes(g);
+                }
+            }
+        } else if (btnId === "hBtnJ_equalHeight") {
+            const maxH = snapUp(Math.max(...list.map(g => g.h)));
+            for (const g of list) {
+                if (!g.folded) {
+                    g.h = Math.max(MIN_GROUP_H, maxH);
+                    layoutDockedNodes(g);
+                }
+            }
+        }
+        markChanged();
+    }
+
     window.addEventListener("click", (e) => {
         const evmGroups = getSelectedEvmGroups();
         if (!evmGroups.length) return;
+
+        // 1. Integração direta com a barra EasyKit NodeAlignPro (#hNodeAlignKit)
+        const alignBtn = e.target?.closest?.("#hNodeAlignKit button");
+        if (alignBtn) {
+            const btnId = alignBtn.id || "";
+            const hasNativeSelected = !!(
+                (app.canvas?.selected_nodes && Object.keys(app.canvas.selected_nodes).length > 0) ||
+                app.canvas?.selected_group ||
+                (app.graph?.groups && app.graph.groups.some(g => g.selected))
+            );
+
+            // Botões de cor do NodeAlignPro (#colorRed .. #colorPurple)
+            if (btnId in NODE_ALIGN_PRO_COLORS) {
+                const hex = NODE_ALIGN_PRO_COLORS[btnId];
+                setEvmGroupColor(evmGroups[0], hex);
+                if (colorCircleEl) colorCircleEl.style.background = hex;
+                if (!hasNativeSelected) {
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+                }
+                return;
+            }
+
+            // Botão Limpar/Resetar cor (#colorClear)
+            if (btnId === "colorClear") {
+                setEvmGroupColor(evmGroups[0], DEFAULT_GROUP_COLOR);
+                if (colorCircleEl) colorCircleEl.style.background = DEFAULT_GROUP_COLOR;
+                if (!hasNativeSelected) {
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+                }
+                return;
+            }
+
+            // Botão Seletor de Cor Customizado (#colorPick)
+            if (btnId === "colorPick" && !hasNativeSelected) {
+                e.stopImmediatePropagation();
+                e.preventDefault();
+                const input = document.createElement("input");
+                input.type = "color";
+                input.style.cssText = "position:fixed;opacity:0;pointer-events:none;top:-100px;";
+                input.value = gGroupColor(evmGroups[0]);
+                const applyPicked = (ev) => {
+                    const picked = ev.target?.value;
+                    if (picked) {
+                        setEvmGroupColor(evmGroups[0], picked);
+                        if (colorCircleEl) colorCircleEl.style.background = normalizeHex(picked);
+                    }
+                };
+                input.addEventListener("input", applyPicked);
+                input.addEventListener("change", (ev) => {
+                    applyPicked(ev);
+                    input.remove();
+                });
+                document.body.appendChild(input);
+                input.click();
+                return;
+            }
+
+            // Botões de Alinhamento / Distribuição / Tamanho Igual do NodeAlignPro (#hBtnA..#hBtnJ)
+            if (btnId.startsWith("hBtn") && btnId !== "hBtn_moveElement" && !hasNativeSelected) {
+                e.stopImmediatePropagation();
+                e.preventDefault();
+                alignSelectedEvmGroups(btnId, evmGroups);
+                return;
+            }
+        }
+
+        // 2. Integração com o Color Picker nativo da Selection Toolbox do ComfyUI
         const btn = e.target?.closest?.("button[data-testid], .color-picker-container button");
         if (!btn || floatingBar.contains(btn)) return;
         const testId = btn.getAttribute("data-testid") || "";
@@ -3709,6 +3874,17 @@ function initEvmGroupFloatingBar() {
         } else {
             const match = stdColors.find(c => c.name === testId);
             if (match) setEvmGroupColor(evmGroups[0], match.groupcolor);
+        }
+    }, true);
+
+    // Sincroniza também quando o #colorPick do NodeAlignPro abre um <input type="color"> com nós + EVM Group co-selecionados
+    document.addEventListener("change", (e) => {
+        if (e.target && e.target.tagName === "INPUT" && e.target.type === "color") {
+            const evmGroups = getSelectedEvmGroups();
+            if (evmGroups.length && e.target.value) {
+                setEvmGroupColor(evmGroups[0], e.target.value);
+                if (colorCircleEl) colorCircleEl.style.background = normalizeHex(e.target.value);
+            }
         }
     }, true);
 
