@@ -1,0 +1,463 @@
+{
+  "last_node_id": 16,
+  "last_link_id": 15,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "CheckpointLoaderSimple",
+      "title": "Load Checkpoint",
+      "pos": [70, 150],
+      "size": [340, 100],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        { "name": "MODEL", "type": "MODEL", "links": [1], "slot_index": 0 },
+        { "name": "CLIP", "type": "CLIP", "links": [2, 3], "slot_index": 1 },
+        { "name": "VAE", "type": "VAE", "links": [4], "slot_index": 2 }
+      ],
+      "properties": { "Node name for S&R": "CheckpointLoaderSimple" },
+      "widgets_values": ["v1-5-pruned-emaonly.safetensors"],
+      "widgets_values_named": {
+        "ckpt_name": "v1-5-pruned-emaonly.safetensors"
+      }
+    },
+    {
+      "id": 2,
+      "type": "CLIPTextEncode",
+      "title": "CLIP Text Encode (Positive)",
+      "pos": [70, 310],
+      "size": [340, 130],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        { "name": "clip", "type": "CLIP", "link": 2 }
+      ],
+      "outputs": [
+        { "name": "CONDITIONING", "type": "CONDITIONING", "links": [5], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "CLIPTextEncode" },
+      "widgets_values": ["cinematic portrait of a cyberpunk engineer inside a neon workshop, volumetric lighting, 85mm lens, ultra detailed"],
+      "widgets_values_named": {
+        "text": "cinematic portrait of a cyberpunk engineer inside a neon workshop, volumetric lighting, 85mm lens, ultra detailed"
+      }
+    },
+    {
+      "id": 3,
+      "type": "CLIPTextEncode",
+      "title": "CLIP Text Encode (Negative)",
+      "pos": [70, 500],
+      "size": [340, 110],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        { "name": "clip", "type": "CLIP", "link": 3 }
+      ],
+      "outputs": [
+        { "name": "CONDITIONING", "type": "CONDITIONING", "links": [6], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "CLIPTextEncode" },
+      "widgets_values": ["blurry, low quality, deformed, watermark, text, oversaturated"],
+      "widgets_values_named": {
+        "text": "blurry, low quality, deformed, watermark, text, oversaturated"
+      }
+    },
+    {
+      "id": 4,
+      "type": "SetNode",
+      "title": "Set_1_Models_Conditioning_MODEL",
+      "pos": [470, 180],
+      "size": [240, 60],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        { "name": "MODEL", "type": "MODEL", "link": 1 }
+      ],
+      "outputs": [
+        { "name": "*", "type": "*", "links": [] }
+      ],
+      "properties": {
+        "previousName": "1_Models_Conditioning_MODEL",
+        "evmGroupPrefix": "1_Models_Conditioning",
+        "evmAutoNamed": true
+      },
+      "widgets_values": ["1_Models_Conditioning_MODEL"],
+      "widgets_values_named": {
+        "Constant": "1_Models_Conditioning_MODEL"
+      }
+    },
+    {
+      "id": 5,
+      "type": "SetNode",
+      "title": "Set_1_Models_Conditioning_CONDITIONING",
+      "pos": [470, 300],
+      "size": [240, 60],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        { "name": "CONDITIONING", "type": "CONDITIONING", "link": 5 }
+      ],
+      "outputs": [
+        { "name": "*", "type": "*", "links": [] }
+      ],
+      "properties": {
+        "previousName": "1_Models_Conditioning_CONDITIONING",
+        "evmGroupPrefix": "1_Models_Conditioning",
+        "evmAutoNamed": true
+      },
+      "widgets_values": ["1_Models_Conditioning_CONDITIONING"],
+      "widgets_values_named": {
+        "Constant": "1_Models_Conditioning_CONDITIONING"
+      }
+    },
+    {
+      "id": 6,
+      "type": "SetNode",
+      "title": "Set_1_Models_Conditioning_CONDITIONING_2",
+      "pos": [470, 420],
+      "size": [240, 60],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        { "name": "CONDITIONING", "type": "CONDITIONING", "link": 6 }
+      ],
+      "outputs": [
+        { "name": "*", "type": "*", "links": [] }
+      ],
+      "properties": {
+        "previousName": "1_Models_Conditioning_CONDITIONING_2",
+        "evmGroupPrefix": "1_Models_Conditioning",
+        "evmAutoNamed": true
+      },
+      "widgets_values": ["1_Models_Conditioning_CONDITIONING_2"],
+      "widgets_values_named": {
+        "Constant": "1_Models_Conditioning_CONDITIONING_2"
+      }
+    },
+    {
+      "id": 7,
+      "type": "SetNode",
+      "title": "Set_1_Models_Conditioning_VAE",
+      "pos": [470, 540],
+      "size": [240, 60],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        { "name": "VAE", "type": "VAE", "link": 4 }
+      ],
+      "outputs": [
+        { "name": "*", "type": "*", "links": [] }
+      ],
+      "properties": {
+        "previousName": "1_Models_Conditioning_VAE",
+        "evmGroupPrefix": "1_Models_Conditioning",
+        "evmAutoNamed": true
+      },
+      "widgets_values": ["1_Models_Conditioning_VAE"],
+      "widgets_values_named": {
+        "Constant": "1_Models_Conditioning_VAE"
+      }
+    },
+    {
+      "id": 8,
+      "type": "GetNode",
+      "title": "Get_1_Models_Conditioning_MODEL",
+      "pos": [810, 180],
+      "size": [240, 60],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        { "name": "MODEL", "type": "MODEL", "links": [7], "slot_index": 0 }
+      ],
+      "properties": {},
+      "widgets_values": ["1_Models_Conditioning_MODEL"],
+      "widgets_values_named": {
+        "Constant": "1_Models_Conditioning_MODEL"
+      }
+    },
+    {
+      "id": 9,
+      "type": "GetNode",
+      "title": "Get_1_Models_Conditioning_CONDITIONING",
+      "pos": [810, 300],
+      "size": [240, 60],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        { "name": "CONDITIONING", "type": "CONDITIONING", "links": [8], "slot_index": 0 }
+      ],
+      "properties": {},
+      "widgets_values": ["1_Models_Conditioning_CONDITIONING"],
+      "widgets_values_named": {
+        "Constant": "1_Models_Conditioning_CONDITIONING"
+      }
+    },
+    {
+      "id": 10,
+      "type": "GetNode",
+      "title": "Get_1_Models_Conditioning_CONDITIONING_2",
+      "pos": [810, 420],
+      "size": [240, 60],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        { "name": "CONDITIONING", "type": "CONDITIONING", "links": [9], "slot_index": 0 }
+      ],
+      "properties": {},
+      "widgets_values": ["1_Models_Conditioning_CONDITIONING_2"],
+      "widgets_values_named": {
+        "Constant": "1_Models_Conditioning_CONDITIONING_2"
+      }
+    },
+    {
+      "id": 11,
+      "type": "EmptyLatentImage",
+      "title": "Empty Latent Image",
+      "pos": [1110, 150],
+      "size": [320, 110],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        { "name": "LATENT", "type": "LATENT", "links": [10], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "EmptyLatentImage" },
+      "widgets_values": [512, 512, 1],
+      "widgets_values_named": {
+        "width": 512,
+        "height": 512,
+        "batch_size": 1
+      }
+    },
+    {
+      "id": 12,
+      "type": "KSampler",
+      "title": "KSampler",
+      "pos": [1110, 320],
+      "size": [320, 260],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        { "name": "model", "type": "MODEL", "link": 7 },
+        { "name": "positive", "type": "CONDITIONING", "link": 8 },
+        { "name": "negative", "type": "CONDITIONING", "link": 9 },
+        { "name": "latent_image", "type": "LATENT", "link": 10 }
+      ],
+      "outputs": [
+        { "name": "LATENT", "type": "LATENT", "links": [11], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "KSampler" },
+      "widgets_values": [428190412, "fixed", 20, 7.0, "euler", "normal", 1.0],
+      "widgets_values_named": {
+        "seed": 428190412,
+        "control_after_generate": "fixed",
+        "steps": 20,
+        "cfg": 7.0,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 1.0
+      }
+    },
+    {
+      "id": 13,
+      "type": "SetNode",
+      "title": "Set_2_KSampler_Latent_LATENT",
+      "pos": [1490, 180],
+      "size": [220, 60],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        { "name": "LATENT", "type": "LATENT", "link": 11 }
+      ],
+      "outputs": [
+        { "name": "*", "type": "*", "links": [] }
+      ],
+      "properties": {
+        "previousName": "2_KSampler_Latent_LATENT",
+        "evmGroupPrefix": "2_KSampler_Latent",
+        "evmAutoNamed": true
+      },
+      "widgets_values": ["2_KSampler_Latent_LATENT"],
+      "widgets_values_named": {
+        "Constant": "2_KSampler_Latent_LATENT"
+      }
+    },
+    {
+      "id": 14,
+      "type": "GetNode",
+      "title": "Get_2_KSampler_Latent_LATENT",
+      "pos": [1810, 180],
+      "size": [220, 60],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        { "name": "LATENT", "type": "LATENT", "links": [12], "slot_index": 0 }
+      ],
+      "properties": {},
+      "widgets_values": ["2_KSampler_Latent_LATENT"],
+      "widgets_values_named": {
+        "Constant": "2_KSampler_Latent_LATENT"
+      }
+    },
+    {
+      "id": 15,
+      "type": "GetNode",
+      "title": "Get_1_Models_Conditioning_VAE",
+      "pos": [1810, 300],
+      "size": [220, 60],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        { "name": "VAE", "type": "VAE", "links": [13], "slot_index": 0 }
+      ],
+      "properties": {},
+      "widgets_values": ["1_Models_Conditioning_VAE"],
+      "widgets_values_named": {
+        "Constant": "1_Models_Conditioning_VAE"
+      }
+    },
+    {
+      "id": 16,
+      "type": "VAEDecode",
+      "title": "VAE Decode",
+      "pos": [2090, 150],
+      "size": [320, 70],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        { "name": "samples", "type": "LATENT", "link": 12 },
+        { "name": "vae", "type": "VAE", "link": 13 }
+      ],
+      "outputs": [
+        { "name": "IMAGE", "type": "IMAGE", "links": [14], "slot_index": 0 }
+      ],
+      "properties": { "Node name for S&R": "VAEDecode" },
+      "widgets_values": [],
+      "widgets_values_named": {}
+    },
+    {
+      "id": 17,
+      "type": "SaveImage",
+      "title": "Save Image",
+      "pos": [2090, 280],
+      "size": [320, 290],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        { "name": "images", "type": "IMAGE", "link": 14 }
+      ],
+      "outputs": [],
+      "properties": { "Node name for S&R": "SaveImage" },
+      "widgets_values": ["EVM_Advanced_Group_Demo"],
+      "widgets_values_named": {
+        "filename_prefix": "EVM_Advanced_Group_Demo"
+      }
+    }
+  ],
+  "links": [
+    [1, 1, 0, 4, 0, "MODEL"],
+    [2, 1, 1, 2, 0, "CLIP"],
+    [3, 1, 1, 3, 0, "CLIP"],
+    [4, 1, 2, 7, 0, "VAE"],
+    [5, 2, 0, 5, 0, "CONDITIONING"],
+    [6, 3, 0, 6, 0, "CONDITIONING"],
+    [7, 8, 0, 12, 0, "MODEL"],
+    [8, 9, 0, 12, 1, "CONDITIONING"],
+    [9, 10, 0, 12, 2, "CONDITIONING"],
+    [10, 11, 0, 12, 3, "LATENT"],
+    [11, 12, 0, 13, 0, "LATENT"],
+    [12, 14, 0, 16, 0, "LATENT"],
+    [13, 15, 0, 16, 1, "VAE"],
+    [14, 16, 0, 17, 0, "IMAGE"]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.75,
+      "offset": [20, 40]
+    },
+    "evmGroups": [
+      {
+        "id": "evmg_demo_1_models",
+        "title": "1. Models & Conditioning",
+        "x": 40,
+        "y": 60,
+        "w": 700,
+        "h": 580,
+        "leftRailOpen": false,
+        "rightRailOpen": true,
+        "leftRailW": 200,
+        "rightRailW": 300,
+        "color": "#3f789e",
+        "titleColor": "#3f789e",
+        "bodyColor": "#3f789e",
+        "fontSize": 16,
+        "getNodeIds": [],
+        "setNodeIds": [4, 5, 6, 7],
+        "_colorMigratedV2": true
+      },
+      {
+        "id": "evmg_demo_2_sampler",
+        "title": "2. KSampler & Latent",
+        "x": 780,
+        "y": 60,
+        "w": 960,
+        "h": 550,
+        "leftRailOpen": true,
+        "rightRailOpen": true,
+        "leftRailW": 300,
+        "rightRailW": 280,
+        "color": "#a1309b",
+        "titleColor": "#a1309b",
+        "bodyColor": "#a1309b",
+        "fontSize": 16,
+        "getNodeIds": [8, 9, 10],
+        "setNodeIds": [13],
+        "_colorMigratedV2": true
+      },
+      {
+        "id": "evmg_demo_3_output",
+        "title": "3. VAE Decode & Output",
+        "x": 1780,
+        "y": 60,
+        "w": 660,
+        "h": 540,
+        "leftRailOpen": true,
+        "rightRailOpen": false,
+        "leftRailW": 280,
+        "rightRailW": 200,
+        "color": "#88aa88",
+        "titleColor": "#88aa88",
+        "bodyColor": "#88aa88",
+        "fontSize": 16,
+        "getNodeIds": [14, 15],
+        "setNodeIds": [],
+        "_colorMigratedV2": true
+      }
+    ]
+  },
+  "version": 0.4
+}

@@ -2960,7 +2960,7 @@ const EVM_SETTINGS_DEFS = [
         attrs: { min: 1, max: 8, step: 1 },
         defaultValue: 3,
         tooltip: "Distância entre as bordas/cabeçalho do grupo e os nodes internos (padrão: 3 quadradinhos = 30px).",
-        category: ["⚡ EVM Group", "1. Layout & Grade", "Margem Interna"],
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Margem Interna"],
         onChange: (val) => {
             const sq = Math.max(1, Math.min(10, Number(val) || 3));
             PAD = sq * GRID;
@@ -2975,7 +2975,7 @@ const EVM_SETTINGS_DEFS = [
         attrs: { min: 1, max: 8, step: 1 },
         defaultValue: 3,
         tooltip: "Espaço livre vertical entre o fim de um node e o topo da barra de título do node debaixo (padrão: 3 quadradinhos = 30px livres + 30px do título = 60px).",
-        category: ["⚡ EVM Group", "1. Layout & Grade", "Gap Vertical"],
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Gap Vertical"],
         onChange: (val) => {
             const sq = Math.max(1, Math.min(10, Number(val) || 3));
             NODE_VGAP = sq * GRID + NODE_TITLE_H;
@@ -2989,7 +2989,7 @@ const EVM_SETTINGS_DEFS = [
         attrs: { min: 1, max: 10, step: 1 },
         defaultValue: 3,
         tooltip: "Distância horizontal entre colunas de nodes dentro da Área Central do grupo (padrão: 3 quadradinhos = 30px).",
-        category: ["⚡ EVM Group", "1. Layout & Grade", "Gap Horizontal"],
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Gap Horizontal"],
         onChange: (val) => {
             const sq = Math.max(1, Math.min(12, Number(val) || 3));
             NODE_HGAP = sq * GRID;
@@ -3003,7 +3003,7 @@ const EVM_SETTINGS_DEFS = [
         attrs: { min: 30, max: 240, step: 10 },
         defaultValue: 100,
         tooltip: "Diferença máxima no eixo X (em pixels) para considerar que dois nodes pertencem à mesma coluna vertical.",
-        category: ["⚡ EVM Group", "1. Layout & Grade", "Tolerância de Coluna"],
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Tolerância de Coluna"],
         onChange: (val) => {
             COL_THRESHOLD = Math.max(20, Number(val) || 100);
             refreshAllGroupsLayout();
@@ -3015,7 +3015,7 @@ const EVM_SETTINGS_DEFS = [
         type: "boolean",
         defaultValue: true,
         tooltip: "Quando ativo, redimensionar ou minimizar/maximizar qualquer node reposiciona os vizinhos automaticamente e ajusta o tamanho do grupo em tempo real.",
-        category: ["⚡ EVM Group", "1. Layout & Grade", "Auto-Reflow Dinâmico"],
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Auto-Reflow Dinâmico"],
         onChange: (val) => {
             EVM_CFG.autoReflow = Boolean(val);
             if (EVM_CFG.autoReflow) refreshAllGroupsLayout();
@@ -3027,7 +3027,7 @@ const EVM_SETTINGS_DEFS = [
         type: "boolean",
         defaultValue: true,
         tooltip: "Garante que posição e tamanho dos grupos e nodes fiquem alinhados em múltiplos exatos de 10px.",
-        category: ["⚡ EVM Group", "1. Layout & Grade", "Snap to Grid"],
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Snap to Grid"],
         onChange: (val) => {
             EVM_CFG.snapToGrid = Boolean(val);
             refreshAllGroupsLayout();
@@ -3040,8 +3040,8 @@ const EVM_SETTINGS_DEFS = [
         name: "Iniciar novos grupos com o painel esquerdo (GetNode) aberto",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Define se o trilho esquerdo de entrada (GetNode) já vem visível ao criar um novo EVM Group.",
-        category: ["⚡ EVM Group", "2. Painéis Set / Get", "Painel Esquerdo (GetNode)"],
+        tooltip: "Define se o trilho esquerdo de entrada (GetNode) já vem visível ao criar um novo EVM Advanced Group.",
+        category: ["⚡ EVM Advanced Group", "2. Painéis Set / Get", "Painel Esquerdo (GetNode)"],
         onChange: (val) => {
             EVM_CFG.defaultLeftOpen = Boolean(val);
         },
@@ -3051,8 +3051,8 @@ const EVM_SETTINGS_DEFS = [
         name: "Iniciar novos grupos com o painel direito (SetNode) aberto",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Define se o trilho direito de saída (SetNode) já vem visível ao criar um novo EVM Group.",
-        category: ["⚡ EVM Group", "2. Painéis Set / Get", "Painel Direito (SetNode)"],
+        tooltip: "Define se o trilho direito de saída (SetNode) já vem visível ao criar um novo EVM Advanced Group.",
+        category: ["⚡ EVM Advanced Group", "2. Painéis Set / Get", "Painel Direito (SetNode)"],
         onChange: (val) => {
             EVM_CFG.defaultRightOpen = Boolean(val);
         },
@@ -3064,7 +3064,7 @@ const EVM_SETTINGS_DEFS = [
         attrs: { min: 100, max: 260, step: 10 },
         defaultValue: 140,
         tooltip: "Largura mínima útil do painel lateral quando vazio ou com nomes curtos (o painel sempre se expande automaticamente para nomes longos).",
-        category: ["⚡ EVM Group", "2. Painéis Set / Get", "Largura Mínima dos Painéis"],
+        category: ["⚡ EVM Advanced Group", "2. Painéis Set / Get", "Largura Mínima dos Painéis"],
         onChange: (val) => {
             MIN_RAIL_INNER_W = Math.max(90, Number(val) || 140);
             recalcDerivedGeometry();
@@ -3078,7 +3078,7 @@ const EVM_SETTINGS_DEFS = [
         options: ["<Grupo>_<TIPO>", "<TIPO>_<Grupo>", "Desativado"],
         defaultValue: "<Grupo>_<TIPO>",
         tooltip: "Padrão usado para batizar automaticamente o SetNode ancorado quando um fio é conectado a ele.",
-        category: ["⚡ EVM Group", "2. Painéis Set / Get", "Formato de Auto-Nomenclatura"],
+        category: ["⚡ EVM Advanced Group", "2. Painéis Set / Get", "Formato de Auto-Nomenclatura"],
         onChange: (val) => {
             EVM_CFG.autoNamingFormat = String(val || "<Grupo>_<TIPO>");
         },
@@ -3088,8 +3088,8 @@ const EVM_SETTINGS_DEFS = [
         name: "Renomear SetNodes e GetNodes pareados ao renomear o título do grupo",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Quando ativo, alterar o nome do EVM Group atualiza automaticamente o prefixo de todos os SetNodes ancorados naquele grupo e os GetNodes correspondentes no workflow.",
-        category: ["⚡ EVM Group", "2. Painéis Set / Get", "Sincronizar Renomeação"],
+        tooltip: "Quando ativo, alterar o nome do EVM Advanced Group atualiza automaticamente o prefixo de todos os SetNodes ancorados naquele grupo e os GetNodes correspondentes no workflow.",
+        category: ["⚡ EVM Advanced Group", "2. Painéis Set / Get", "Sincronizar Renomeação"],
         onChange: (val) => {
             EVM_CFG.syncRenameOnGroupTitle = Boolean(val);
         },
@@ -3098,12 +3098,12 @@ const EVM_SETTINGS_DEFS = [
     // 3. Aparência & Cabeçalho
     {
         id: "EVMGroup.Appearance.DefaultColor",
-        name: "Cor padrão ao criar novos EVM Groups (Paleta ComfyUI)",
+        name: "Cor padrão ao criar novos EVM Advanced Groups (Paleta ComfyUI)",
         type: "combo",
         options: Object.keys(COLOR_OPTIONS_MAP),
         defaultValue: "Pale Blue (Padrão ComfyUI)",
         tooltip: "Cor inicial aplicada a novos grupos criados (usa a paleta oficial LGraphCanvas.node_colors do ComfyUI).",
-        category: ["⚡ EVM Group", "3. Aparência & Cabeçalho", "Cor Padrão"],
+        category: ["⚡ EVM Advanced Group", "3. Aparência & Cabeçalho", "Cor Padrão"],
         onChange: (val) => {
             DEFAULT_GROUP_COLOR = COLOR_OPTIONS_MAP[val] || "#3f789e";
             repaint();
@@ -3115,8 +3115,8 @@ const EVM_SETTINGS_DEFS = [
         type: "slider",
         attrs: { min: 12, max: 24, step: 1 },
         defaultValue: 16,
-        tooltip: "Tamanho da fonte exibida na barra de título superior do EVM Group.",
-        category: ["⚡ EVM Group", "3. Aparência & Cabeçalho", "Tamanho da Fonte"],
+        tooltip: "Tamanho da fonte exibida na barra de título superior do EVM Advanced Group.",
+        category: ["⚡ EVM Advanced Group", "3. Aparência & Cabeçalho", "Tamanho da Fonte"],
         onChange: (val) => {
             DEF_FONT_SIZE = Math.max(10, Math.min(28, Number(val) || 16));
             for (const g of ensureEvmGroups()) {
@@ -3131,8 +3131,8 @@ const EVM_SETTINGS_DEFS = [
         type: "slider",
         attrs: { min: 25, max: 100, step: 5 },
         defaultValue: 78,
-        tooltip: "Transparência da barra de cabeçalho superior do EVM Group.",
-        category: ["⚡ EVM Group", "3. Aparência & Cabeçalho", "Opacidade do Título"],
+        tooltip: "Transparência da barra de cabeçalho superior do EVM Advanced Group.",
+        category: ["⚡ EVM Advanced Group", "3. Aparência & Cabeçalho", "Opacidade do Título"],
         onChange: (val) => {
             DEF_TITLE_ALPHA = Math.max(0.15, Math.min(1, (Number(val) || 78) / 100));
             repaint();
@@ -3145,7 +3145,7 @@ const EVM_SETTINGS_DEFS = [
         attrs: { min: 5, max: 65, step: 5 },
         defaultValue: 22,
         tooltip: "Transparência do preenchimento interno do grupo.",
-        category: ["⚡ EVM Group", "3. Aparência & Cabeçalho", "Opacidade do Corpo"],
+        category: ["⚡ EVM Advanced Group", "3. Aparência & Cabeçalho", "Opacidade do Corpo"],
         onChange: (val) => {
             DEF_BODY_ALPHA = Math.max(0.03, Math.min(0.85, (Number(val) || 22) / 100));
             repaint();
@@ -3157,8 +3157,8 @@ const EVM_SETTINGS_DEFS = [
         type: "combo",
         options: Object.keys(HEADER_VIS_MAP),
         defaultValue: "Sempre visíveis (Run, Mute, Bypass, Fold)",
-        tooltip: "Controla quais botões aparecem no canto superior direito do cabeçalho do EVM Group.",
-        category: ["⚡ EVM Group", "3. Aparência & Cabeçalho", "Botões do Cabeçalho"],
+        tooltip: "Controla quais botões aparecem no canto superior direito do cabeçalho do EVM Advanced Group.",
+        category: ["⚡ EVM Advanced Group", "3. Aparência & Cabeçalho", "Botões do Cabeçalho"],
         onChange: (val) => {
             EVM_CFG.headerBtnVis = HEADER_VIS_MAP[val] || "always";
             repaint();
@@ -3169,8 +3169,8 @@ const EVM_SETTINGS_DEFS = [
         name: "Exibir conexões externas quando o grupo estiver recolhido (Folded)",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Mantém visíveis as linhas de ligação que entram ou saem de um EVM Group recolhido.",
-        category: ["⚡ EVM Group", "3. Aparência & Cabeçalho", "Conexões Quando Recolhido"],
+        tooltip: "Mantém visíveis as linhas de ligação que entram ou saem de um EVM Advanced Group recolhido.",
+        category: ["⚡ EVM Advanced Group", "3. Aparência & Cabeçalho", "Conexões Quando Recolhido"],
         onChange: (val) => {
             EVM_CFG.showLinksWhenFolded = Boolean(val);
             for (const g of ensureEvmGroups()) {
@@ -3186,8 +3186,8 @@ const EVM_SETTINGS_DEFS = [
         name: "Exibir barra flutuante de ações ao selecionar um grupo (Cor, Delete, Fold)",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Mostra a barra pílula flutuante acima do EVM Group ou Pixaroma Group selecionado.",
-        category: ["⚡ EVM Group", "4. Barra de Ações (Toolbox)", "Barra Flutuante do Grupo"],
+        tooltip: "Mostra a barra pílula flutuante acima do EVM Advanced Group ou Pixaroma Group selecionado.",
+        category: ["⚡ EVM Advanced Group", "4. Barra de Ações (Toolbox)", "Barra Flutuante do Grupo"],
         onChange: (val) => {
             EVM_CFG.showFloatingToolbar = Boolean(val);
             const bar = document.getElementById("evm-group-floating-bar");
@@ -3200,7 +3200,7 @@ const EVM_SETTINGS_DEFS = [
         type: "boolean",
         defaultValue: true,
         tooltip: "Adiciona o botão pílula 'EVM Group' na barra de seleção nativa do ComfyUI ao selecionar nodes ou grupos.",
-        category: ["⚡ EVM Group", "4. Barra de Ações (Toolbox)", "Botão na Selection Toolbox Nativa"],
+        category: ["⚡ EVM Advanced Group", "4. Barra de Ações (Toolbox)", "Botão na Selection Toolbox Nativa"],
         onChange: (val) => {
             EVM_CFG.showConvertInNativeToolbox = Boolean(val);
         },
@@ -3737,13 +3737,13 @@ function initEvmGroupFloatingBar() {
 
 // ── Registro da Extensão, Settings e Menu de Contexto ────────────────────────
 app.registerExtension({
-    name: "EVM.GroupSetGet",
+    name: "EVM.AdvancedGroup",
     settings: EVM_SETTINGS_DEFS,
     commands: [
         {
             id: EVM_GROUP_TOOLBOX_CMD,
-            label: "Create or convert to EVM Group (Set/Get)",
-            tooltip: "Criar / Converter para EVM Group (GetNode / SetNode)",
+            label: "Create or convert to EVM Advanced Group (Set/Get)",
+            tooltip: "Criar / Converter para EVM Advanced Group (GetNode / SetNode)",
             icon: "evm-toolbox-group-pill-icon",
             function: () => triggerCreateOrConvertFromSelection(),
         },
@@ -3914,7 +3914,8 @@ app.registerExtension({
             groupAt: evmGroupAt,
             repaint,
         };
+        window.EVMAdvancedGroup = window.EVMGroupSetGet;
 
-        console.log("[ComfyUI-EVM-Group] Inicializado com sucesso (Settings nativos ⚡ EVM Group + Grid 3 quadradinhos + Auto-Reflow).");
+        console.log("[ComfyUI-EVM-Advanced-Group] Inicializado com sucesso (Settings nativos ⚡ EVM Advanced Group + Grid 3 quadradinhos + Auto-Reflow).");
     },
 });
