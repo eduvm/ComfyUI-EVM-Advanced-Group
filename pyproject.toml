@@ -1,0 +1,14 @@
+[project]
+name = "comfyui-evm-group"
+description = "Advanced group container for ComfyUI with lateral GetNode and SetNode dock panels, automatic grid alignment, live reflow, and ComfyUI Selection Toolbox integration."
+version = "1.0.0"
+license = { text = "MIT" }
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/eduvm/ComfyUI-EVM-Group"
+
+[tool.comfy]
+PublisherId = "eduvm"
+DisplayName = "ComfyUI EVM Group (Set/Get)"
+Icon = ""
