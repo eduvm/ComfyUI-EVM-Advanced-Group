@@ -205,7 +205,8 @@ function gBodyColor(g) {
 
 function setEvmGroupColor(g, hexOrNull) {
     if (!g) return;
-    const c = hexOrNull ? normalizeHex(hexOrNull) : DEFAULT_GROUP_COLOR;
+    const isReset = hexOrNull === null || hexOrNull === undefined || hexOrNull === "";
+    const c = !isReset ? normalizeHex(hexOrNull) : DEFAULT_GROUP_COLOR;
     const targets = _selectedIds.has(g.id) ? getSelectedEvmGroups() : [g];
     for (const t of targets) {
         t.color = c;
@@ -306,6 +307,7 @@ let _carry = null;
 let _lmbDown = false;
 let _clickDeselectPending = false;
 let _pendingEvmSelect = null;
+let _pendingBodyAdditiveToggle = null;
 let _marqueeRect = null;
 let _marqueeStartPt = null;
 let _marqueeShift = false;
@@ -2282,6 +2284,7 @@ function onPointerDown(e) {
     _lmbDown = true;
     _clickDeselectPending = false;
     _pendingEvmSelect = null;
+    _pendingBodyAdditiveToggle = null;
     _marqueeRect = null;
     _marqueeShift = !!(e.shiftKey || e.ctrlKey || e.metaKey);
     _preMarqueeSelectedIds = _marqueeShift ? new Set(_selectedIds) : new Set();
@@ -2358,14 +2361,12 @@ function onPointerDown(e) {
                               (inSubHeader(g, p) && !onNode) ||
                               (inRailArea(g, p) && !onNode);
 
-        // Com Shift/Ctrl/Meta pressionado, clicar em qualquer parte livre do grupo (header, trilhos ou fundo sem nó)
-        // adiciona/remove o grupo da multi-seleção SEM perder os nós ou outros grupos selecionados!
-        if (isAdditiveMod && (onGroupChrome || !onNode)) {
-            toggleEvmGroupSelection(g);
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            repaint();
-            return;
+        // Com Shift/Ctrl/Meta pressionado em qualquer área livre do grupo (header, painéis laterais Set/Get ou área central):
+        // NÃO bloqueia o pointerdown para que o Ctrl+Drag inicie a caixa de seleção nativa (marquee) em qualquer lugar,
+        // inclusive dentro dos painéis laterais! Se soltar sem arrastar (< 5px), alterna a seleção do grupo no pointerup.
+        if (isAdditiveMod && !onNode) {
+            _pendingBodyAdditiveToggle = { group: g, startX: e.clientX, startY: e.clientY };
+            break;
         }
 
         if (onGroupChrome) {
@@ -2491,6 +2492,18 @@ function onDragUp() {
 function onGlobalPointerUp(e) {
     _lmbDown = false;
     _carry = null;
+
+    if (_pendingBodyAdditiveToggle) {
+        const pending = _pendingBodyAdditiveToggle;
+        _pendingBodyAdditiveToggle = null;
+        const dist = e ? Math.hypot((e.clientX ?? pending.startX) - pending.startX, (e.clientY ?? pending.startY) - pending.startY) : 0;
+        const dr = app.canvas?.dragging_rectangle;
+        const hadMarquee = _marqueeRect && (Math.abs(_marqueeRect[2]) >= 4 || Math.abs(_marqueeRect[3]) >= 4);
+        const hasActiveDr = dr && dr.length >= 4 && (Math.abs(dr[2]) >= 4 || Math.abs(dr[3]) >= 4);
+        if (dist < 5 && !hadMarquee && !hasActiveDr && pending.group) {
+            toggleEvmGroupSelection(pending.group);
+        }
+    }
 
     if (_pendingEvmSelect != null) {
         const gid = _pendingEvmSelect;
@@ -3806,8 +3819,7 @@ function initEvmGroupFloatingBar() {
                 app.canvas?.selected_group ||
                 (app.graph?.groups && app.graph.groups.some(g => g.selected))
             );
-
-            // Botões de cor do NodeAlignPro (#colorRed .. #colorPurple)
+            // Botões de cor do NodeAlignPro (#colorRed .. #colorPurple) -> no EVM Group aplica sempre no título e no corpo
             if (btnId in NODE_ALIGN_PRO_COLORS) {
                 const hex = NODE_ALIGN_PRO_COLORS[btnId];
                 setEvmGroupColor(evmGroups[0], hex);
@@ -3821,7 +3833,7 @@ function initEvmGroupFloatingBar() {
 
             // Botão Limpar/Resetar cor (#colorClear)
             if (btnId === "colorClear") {
-                setEvmGroupColor(evmGroups[0], DEFAULT_GROUP_COLOR);
+                setEvmGroupColor(evmGroups[0], null);
                 if (colorCircleEl) colorCircleEl.style.background = DEFAULT_GROUP_COLOR;
                 if (!hasNativeSelected) {
                     e.stopImmediatePropagation();
@@ -3870,7 +3882,7 @@ function initEvmGroupFloatingBar() {
         const testId = btn.getAttribute("data-testid") || "";
         const stdColors = getComfyStandardGroupColors();
         if (testId === "noColor") {
-            setEvmGroupColor(evmGroups[0], DEFAULT_GROUP_COLOR);
+            setEvmGroupColor(evmGroups[0], null);
         } else {
             const match = stdColors.find(c => c.name === testId);
             if (match) setEvmGroupColor(evmGroups[0], match.groupcolor);
@@ -3970,6 +3982,17 @@ app.registerExtension({
 
             items.push(
                 {
+                    content: "🎨 EVM Color Palette (\\)",
+                    callback: () => {
+                        selectEvmGroup(overEvm);
+                        if (window.EVMColorPalette?.openForEvmGroup) {
+                            window.EVMColorPalette.openForEvmGroup(overEvm);
+                        } else if (window.EVMColorPalette?.openForSelection) {
+                            window.EVMColorPalette.openForSelection();
+                        }
+                    },
+                },
+                {
                     content: "🎨 Color (Padrão ComfyUI)",
                     has_submenu: true,
                     submenu: {
@@ -4063,13 +4086,14 @@ app.registerExtension({
             _lmbDown = false;
             _clickDeselectPending = false;
             _pendingEvmSelect = null;
+            _pendingBodyAdditiveToggle = null;
             _marqueeRect = null;
             _marqueeStartPt = null;
             _marqueeShift = false;
             _preMarqueeSelectedIds = null;
         });
 
-        // Expõe API global para integração com evm_node_screenshot.js e Selection Toolbox
+        // Expõe API global para integração com evm_node_screenshot.js, evm_color_palette.js e Selection Toolbox
         window.EVMGroupSetGet = {
             hasOwnFloatingBar: true,
             createGroup: createEvmGroup,
@@ -4078,6 +4102,13 @@ app.registerExtension({
             convertNativeGroup: convertNativeGroupToEvm,
             setGroupColor: setEvmGroupColor,
             getGroupColor: gGroupColor,
+            getTitleColor: gTitleColor,
+            getBodyColor: gBodyColor,
+            getTitleAlpha: gTitleAlpha,
+            getBodyAlpha: gBodyAlpha,
+            getFontSize: gFontSize,
+            groupScreenRect,
+            markChanged,
             getStandardColors: getComfyStandardGroupColors,
             tidyGroup: (g) => tidyGroupCentralNodes(g || getSelectedEvmGroup(), curGraph()),
             toggleLeftRail,
@@ -4087,6 +4118,8 @@ app.registerExtension({
             addSetNode: addDockedSetNode,
             getSelected: getSelectedEvmGroup,
             getSelectedGroups: getSelectedEvmGroups,
+            getAllGroups: ensureEvmGroups,
+            getMemberNodes: groupMemberNodes,
             groupAt: evmGroupAt,
             repaint,
         };
