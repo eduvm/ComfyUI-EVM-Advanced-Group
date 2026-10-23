@@ -427,9 +427,10 @@ function computeSetGetExpandedRequiredWidth(node) {
  */
 function computeNodeCollapsedWidth(node) {
     const ctx = getMeasCtx();
-    ctx.font = node?.innerFontStyle || node?.titleFontStyle || "bold 14px Arial, sans-serif";
+    ctx.font = "bold 14px Arial, sans-serif";
     const fullTitle = String((typeof node?.getTitle === "function" ? node.getTitle() : node?.title) || node?.type || "");
-    // No LiteGraph drawTitleText: quando collapsed, exibe substr(0, 20), mas measure() usa getTitle() completo
+    // Usa sempre "bold 14px Arial" (mesma métrica de measureNodeTitleRequiredWidth e wf_common.py)
+    // em vez de node.innerFontStyle ("normal 12px Arial") para evitar divergência de largura nos trilhos
     const measuredFull = Math.ceil(ctx.measureText(fullTitle).width + NODE_TITLE_H * 2);
     const lgCollapsed = Number.isFinite(node?._collapsed_width) && node._collapsed_width > 0
         ? node._collapsed_width
@@ -656,13 +657,17 @@ function getCentralMemberNodes(g, graph) {
  */
 function clusterIntoSubColumns(nodes) {
     if (!nodes.length) return [];
-    const sortedX = [...nodes].sort((a, b) => (a.pos[0] - b.pos[0]) || (a.pos[1] - b.pos[1]));
+    const resizingNode = app.canvas?.resizing_node;
+    const effX = (n) => (n === resizingNode && Number.isFinite(n?._evmAlignedX)) ? n._evmAlignedX : n.pos[0];
+    const effY = (n) => (n === resizingNode && Number.isFinite(n?._evmAlignedY)) ? n._evmAlignedY : n.pos[1];
+
+    const sortedX = [...nodes].sort((a, b) => (effX(a) - effX(b)) || (effY(a) - effY(b)));
     const subCols = [];
     for (const n of sortedX) {
-        const nx = n.pos[0];
+        const nx = effX(n);
         let placed = false;
         for (const col of subCols) {
-            if (Math.abs(nx - col[0].pos[0]) < COL_THRESHOLD) {
+            if (Math.abs(nx - effX(col[0])) < COL_THRESHOLD) {
                 col.push(n);
                 placed = true;
                 break;
@@ -671,7 +676,7 @@ function clusterIntoSubColumns(nodes) {
         if (!placed) subCols.push([n]);
     }
     for (const col of subCols) {
-        col.sort((a, b) => (a.pos[1] - b.pos[1]) || (a.id - b.id));
+        col.sort((a, b) => (effY(a) - effY(b)) || (a.id - b.id));
     }
     return subCols;
 }
@@ -1146,6 +1151,18 @@ function resolveGroupCollisionsOnMoveDrop(movedItems, graph = null) {
     }
 }
 
+function computeRailsSignature(getNodes, setNodes) {
+    let s = "";
+    for (const n of getNodes) {
+        s += `G${n.id}:${n.flags?.collapsed ? 1 : 0}:${n.flags?.collapsed ? 0 : Math.round(n.size?.[0] || 0)}:${n.title || ""}:${n.widgets?.[0]?.value || ""};`;
+    }
+    s += "|";
+    for (const n of setNodes) {
+        s += `S${n.id}:${n.flags?.collapsed ? 1 : 0}:${n.flags?.collapsed ? 0 : Math.round(n.size?.[0] || 0)}:${n.title || ""}:${n.widgets?.[0]?.value || ""};`;
+    }
+    return s;
+}
+
 function layoutDockedNodes(g, graph, opts = {}) {
     if (!g || g.folded) return;
     const gr = graph || curGraph();
@@ -1173,14 +1190,27 @@ function layoutDockedNodes(g, graph, opts = {}) {
     }
     const targetRightW = snapUp(widestSet + PAD * 2); // 3 quadradinhos (30px) de margem de cada lado
 
-    // 3. Mantém g.x ancorado e garante que a Área Central tenha sempre PAD (30px) à esquerda e à direita
+    // 3. Mantém g.x ancorado e garante que a Área Central tenha sempre PAD (30px) à esquerda e à direita.
+    //    Só recalcula leftRailW/rightRailW quando os próprios GetNodes/SetNodes mudaram (ou forceRailWidthRecalc),
+    //    evitando que redimensionar um nó central altere a largura do trilho e desloque a área central.
     const oldLeftOpenW = g.leftRailOpen === false ? 0 : (g.leftRailW || DEFAULT_RAIL_W);
     const oldRightOpenW = g.rightRailOpen === false ? 0 : (g.rightRailW || DEFAULT_RAIL_W);
 
     const centralNodes = opts.centralNodes || getCentralMemberNodes(g, gr);
 
-    g.leftRailW = targetLeftW;
-    g.rightRailW = targetRightW;
+    const railSig = computeRailsSignature(getNodes, setNodes);
+    const railsUnchanged = (
+        !opts.forceRailWidthRecalc &&
+        g._lastRailSig !== undefined &&
+        g._lastRailSig === railSig &&
+        Number.isFinite(g.leftRailW) &&
+        Number.isFinite(g.rightRailW)
+    );
+    if (!railsUnchanged) {
+        g.leftRailW = targetLeftW;
+        g.rightRailW = targetRightW;
+        g._lastRailSig = railSig;
+    }
 
     const newLeftOpenW = g.leftRailOpen === false ? 0 : g.leftRailW;
     const newRightOpenW = g.rightRailOpen === false ? 0 : g.rightRailW;
@@ -1189,7 +1219,7 @@ function layoutDockedNodes(g, graph, opts = {}) {
     const centerX0 = snap(g.x + newLeftOpenW);
     let currentCenterW = Math.max(MIN_CENTER_W, snap(g.w - oldLeftOpenW - oldRightOpenW));
 
-    if (_drag?.mode !== "resize" && !app.canvas?.node_dragged && centralNodes.length > 0) {
+    if (!opts.skipCentralShift && _drag?.mode !== "resize" && !app.canvas?.node_dragged && !app.canvas?.resizing_node && centralNodes.length > 0) {
         let minX = Infinity;
         let maxRight = -Infinity;
         for (const cn of centralNodes) {
@@ -1205,7 +1235,11 @@ function layoutDockedNodes(g, graph, opts = {}) {
             if (dxCenter !== 0) {
                 for (const cn of centralNodes) {
                     if (!cn || !cn.pos) continue;
-                    setNodePos(cn, cn.pos[0] + dxCenter, cn.pos[1]);
+                    const nextX = snap(cn.pos[0] + dxCenter);
+                    const nextY = snap(cn.pos[1]);
+                    setNodePos(cn, nextX, nextY);
+                    cn._evmAlignedX = nextX;
+                    cn._evmAlignedY = nextY;
                 }
             }
             currentCenterW = Math.max(MIN_CENTER_W, snap((maxRight - minX) + PAD * 2));
@@ -1290,7 +1324,7 @@ function tidyGroupCentralNodes(g, graph, explicitCentralNodes = null, opts = {})
     }
 
     // Primeiro garante que leftRailW e rightRailW já estejam calculados para os Set/Get atuais
-    layoutDockedNodes(g, gr, { centralNodes, isLiveReflow: opts.isLiveReflow, skipPush: true });
+    layoutDockedNodes(g, gr, { centralNodes, isLiveReflow: opts.isLiveReflow, skipPush: true, skipCentralShift: true });
 
     const lOpenW = leftRailW(g);
     const rOpenW = rightRailW(g);
@@ -1328,6 +1362,8 @@ function tidyGroupCentralNodes(g, graph, explicitCentralNodes = null, opts = {})
                 n.size[1] = snapUp(n.size[1] || 30);
             }
             setNodePos(n, colX, yCursor);
+            n._evmAlignedX = colX;
+            n._evmAlignedY = yCursor;
             const bodyH = getNodeActiveBodyHeight(n);
             yCursor += bodyH + NODE_VGAP;
         }
@@ -1343,7 +1379,7 @@ function tidyGroupCentralNodes(g, graph, explicitCentralNodes = null, opts = {})
     g.w = snap(lOpenW + requiredCenterW + rOpenW);
 
     // Reposiciona o trilho direito, ajusta a altura final do grupo e empurra vizinhos se cresceu
-    layoutDockedNodes(g, gr, { centralNodes, shrinkHeightToFit: true, isLiveReflow: opts.isLiveReflow, prevBounds });
+    layoutDockedNodes(g, gr, { centralNodes, shrinkHeightToFit: true, isLiveReflow: opts.isLiveReflow, prevBounds, skipCentralShift: true });
 }
 
 function syncGroupLayoutSignature(g, graph, explicitCentralNodes = null) {
@@ -1354,6 +1390,8 @@ function syncGroupLayoutSignature(g, graph, explicitCentralNodes = null) {
     const getNodes = resolveNodeList(gr, g.getNodeIds);
     const setNodes = resolveNodeList(gr, g.setNodeIds);
     const centralNodes = explicitCentralNodes || getCentralMemberNodes(g, gr);
+
+    g._lastRailSig = computeRailsSignature(getNodes, setNodes);
 
     let sig = `${g.leftRailOpen}:${g.rightRailOpen}|`;
     for (const n of getNodes) {
@@ -1366,10 +1404,14 @@ function syncGroupLayoutSignature(g, graph, explicitCentralNodes = null) {
         const cFlag = cn.flags?.collapsed ? 1 : 0;
         const cW = Math.round(cn.size?.[0] || 140);
         const cH = cFlag ? 0 : Math.round(cn.size?.[1] || 30);
+        const cX = Math.round(cn.pos?.[0] || 0);
+        const cY = Math.round(cn.pos?.[1] || 0);
         cn._evmPrevCollapsed = cFlag;
         cn._evmPrevW = cW;
         cn._evmPrevBodyH = cH;
-        sig += `C${cn.id}:${cFlag}:${cW}:${cH};`;
+        cn._evmAlignedX = cX;
+        cn._evmAlignedY = cY;
+        sig += `C${cn.id}:${cFlag}:${cW}:${cH}:${cX}:${cY};`;
     }
     g._lastLayoutSig = sig;
 }
@@ -1387,8 +1429,9 @@ function checkAndReflowGroupIfNeeded(g, graph) {
     const getNodes = resolveNodeList(gr, g.getNodeIds);
     const setNodes = resolveNodeList(gr, g.setNodeIds);
     const centralNodes = getCentralMemberNodes(g, gr);
+    const resizingNode = app.canvas?.resizing_node;
 
-    // Gera assinatura de estado (collapsed, largura, altura e título) dos nós do grupo
+    // Gera assinatura de estado (collapsed, largura, altura, título e posição durante resize) dos nós do grupo
     let sig = `${g.leftRailOpen}:${g.rightRailOpen}|`;
     for (const n of getNodes) {
         sig += `G${n.id}:${n.flags?.collapsed ? 1 : 0}:${Math.round(n.size?.[0] || 0)}:${Math.round(n.size?.[1] || 0)}:${n.title || ""}:${n.widgets?.[0]?.value || ""};`;
@@ -1403,16 +1446,27 @@ function checkAndReflowGroupIfNeeded(g, graph) {
         const cFlag = cn.flags?.collapsed ? 1 : 0;
         const cW = Math.round(cn.size?.[0] || 140);
         const cH = cFlag ? 0 : Math.round(cn.size?.[1] || 30);
+        const cX = Math.round(cn.pos?.[0] || 0);
+        const cY = Math.round(cn.pos?.[1] || 0);
+        const posDriftedDuringResize = (
+            resizingNode === cn &&
+            cn._evmAlignedX !== undefined &&
+            (cX !== cn._evmAlignedX || cY !== cn._evmAlignedY)
+        );
         if (
             cn._evmPrevCollapsed !== undefined &&
-            (cn._evmPrevCollapsed !== cFlag || cn._evmPrevW !== cW || cn._evmPrevBodyH !== cH)
+            (cn._evmPrevCollapsed !== cFlag || cn._evmPrevW !== cW || cn._evmPrevBodyH !== cH || posDriftedDuringResize)
         ) {
             centralCollapseOrSizeChanged = true;
         }
         cn._evmPrevCollapsed = cFlag;
         cn._evmPrevW = cW;
         cn._evmPrevBodyH = cH;
-        sig += `C${cn.id}:${cFlag}:${cW}:${cH};`;
+        if (isInitialLoad || cn._evmAlignedX === undefined) {
+            cn._evmAlignedX = cX;
+            cn._evmAlignedY = cY;
+        }
+        sig += `C${cn.id}:${cFlag}:${cW}:${cH}:${posDriftedDuringResize ? `${cX}:${cY}` : `${cn._evmAlignedX}:${cn._evmAlignedY}`};`;
     }
 
     if (sig === g._lastLayoutSig) return;
@@ -1421,6 +1475,7 @@ function checkAndReflowGroupIfNeeded(g, graph) {
     // Na primeira renderização após abrir um workflow ou trocar de aba (isInitialLoad),
     // apenas registra a assinatura inicial sem forçar reflow nem mover nós entre grupos!
     if (isInitialLoad) {
+        g._lastRailSig = computeRailsSignature(getNodes, setNodes);
         return;
     }
 
@@ -3163,10 +3218,12 @@ function onGlobalPointerUp(e) {
 
     // Se nós centrais regulares foram movidos dentro de um EVM Group (ou soltos nele),
     // atualiza as bordas do grupo e empurra vizinhos caso o grupo tenha crescido
-    if (!activeCarry && selNodes.length) {
+    if (!activeCarry && selNodes.length && !app.canvas?.resizing_node) {
         const groupsToRefresh = new Set();
         for (const n of selNodes) {
             if (!n || !n.pos || n.type === "GetNode" || n.type === "SetNode") continue;
+            n._evmAlignedX = snap(n.pos[0]);
+            n._evmAlignedY = snap(n.pos[1]);
             const b = nodeVisualBounds(n);
             const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
             const prevGId = n._evmLastGroupId;
