@@ -40,6 +40,7 @@ let DEF_FONT_SIZE = 16;
 // Estado reativo das configurações extras do EVM Group
 const EVM_CFG = {
     autoReflow: true,
+    pushNeighborsOnExpand: true,
     snapToGrid: true,
     defaultLeftOpen: true,
     defaultRightOpen: true,
@@ -667,11 +668,477 @@ function clusterIntoSubColumns(nodes) {
  * (respeitando se os nós estão maximizados ou minimizados) e mantendo 3 quadradinhos (30px)
  * de margem e de espaçamento vertical entre os nós (NODE_VGAP = 60px).
  */
+let _pushingNeighbors = false;
+
+/**
+ * Desloca um grupo (EVM Group, Pixaroma Group ou Grupo Nativo) e todos os seus nós
+ * internos (incluindo GetNode/SetNode ancorados e nós dobrados) por (dx, dy).
+ */
+function shiftGroupDescriptorByDelta(desc, dx, dy, graph) {
+    const gr = graph || curGraph();
+    if (!gr || (!dx && !dy)) return;
+    const g = desc.raw;
+    const allNodes = gr._nodes || [];
+    const byId = new Map();
+    for (const n of allNodes) {
+        if (n && n.id != null) byId.set(String(n.id), n);
+    }
+
+    if (desc.kind === "evmgroup") {
+        const subGroups = containedEvmGroups(g);
+        const nodesToMove = new Map();
+
+        for (const n of groupMemberNodes(g)) {
+            if (n && n.pos) nodesToMove.set(String(n.id), n);
+        }
+        // Se houver grupos aninhados ou nós dobrados, inclui também
+        if (Array.isArray(g.foldNodes)) {
+            for (const fid of g.foldNodes) {
+                const fn = byId.get(String(fid));
+                if (fn && fn.pos) nodesToMove.set(String(fn.id), fn);
+            }
+        }
+        for (const sg of subGroups) {
+            for (const n of groupMemberNodes(sg)) {
+                if (n && n.pos) nodesToMove.set(String(n.id), n);
+            }
+            sg.x = snap(sg.x + dx);
+            sg.y = snap(sg.y + dy);
+        }
+
+        g.x = snap(g.x + dx);
+        g.y = snap(g.y + dy);
+        desc.x = g.x;
+        desc.y = g.y;
+
+        for (const n of nodesToMove.values()) {
+            setNodePos(n, n.pos[0] + dx, n.pos[1] + dy);
+        }
+    } else if (desc.kind === "pixgroup") {
+        const members = [];
+        for (const n of allNodes) {
+            if (!n || !n.pos) continue;
+            const b = nodeVisualBounds(n);
+            const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+            if (cx >= desc.x && cx <= desc.x + desc.w && cy >= desc.y && cy <= desc.y + desc.h) {
+                members.push(n);
+            }
+        }
+        g.x = snap(g.x + dx);
+        g.y = snap(g.y + dy);
+        desc.x = g.x;
+        desc.y = g.y;
+        for (const n of members) {
+            setNodePos(n, n.pos[0] + dx, n.pos[1] + dy);
+        }
+    } else if (desc.kind === "nativegroup") {
+        const pos = g._pos || g.pos;
+        if (!pos) return;
+        const members = [];
+        for (const n of allNodes) {
+            if (!n || !n.pos) continue;
+            const b = nodeVisualBounds(n);
+            const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+            if (cx >= desc.x && cx <= desc.x + desc.w && cy >= desc.y && cy <= desc.y + desc.h) {
+                members.push(n);
+            }
+        }
+        pos[0] = snap(pos[0] + dx);
+        pos[1] = snap(pos[1] + dy);
+        desc.x = pos[0];
+        desc.y = pos[1];
+        for (const n of members) {
+            setNodePos(n, n.pos[0] + dx, n.pos[1] + dy);
+        }
+    }
+}
+
+/**
+ * Empurra automaticamente os grupos vizinhos (em cascata para a direita, esquerda e para baixo)
+ * sempre que `sourceGroup` crescer de tamanho, evitando sobreposição e mantendo o vão canônico
+ * de `PAD` (3 quadradinhos = 30px) entre grupos.
+ */
+function pushNeighborGroupsOnExpand(sourceGroup, prevBounds = null, graph = null) {
+    if (!EVM_CFG.pushNeighborsOnExpand || !sourceGroup || _pushingNeighbors) return;
+    const gr = graph || curGraph();
+    if (!gr) return;
+
+    const grewRight = !prevBounds || (sourceGroup.x + sourceGroup.w > prevBounds.x + prevBounds.w);
+    const grewLeft  = !prevBounds || (sourceGroup.x < prevBounds.x);
+    const grewDown  = !prevBounds || (sourceGroup.y + sourceGroup.h > prevBounds.y + prevBounds.h);
+    const grewUp    = !prevBounds || (sourceGroup.y < prevBounds.y);
+    if (!grewRight && !grewLeft && !grewDown && !grewUp) return;
+
+    _pushingNeighbors = true;
+    try {
+        const groupGap = PAD; // 3 quadradinhos (30px por padrão)
+        const descriptors = [];
+
+        // 1. EVM Groups
+        for (const eg of ensureEvmGroups(gr)) {
+            if (!eg || eg === sourceGroup || isHiddenGroup(eg)) continue;
+            if (containsBox(sourceGroup, eg) || containsBox(eg, sourceGroup)) continue;
+            descriptors.push({ kind: "evmgroup", raw: eg, x: eg.x, y: eg.y, w: eg.w, h: eg.h });
+        }
+        // 2. Pixaroma Groups
+        const pixArr = gr.extra?.pixaromaGroups;
+        if (Array.isArray(pixArr)) {
+            for (const pg of pixArr) {
+                if (!pg) continue;
+                descriptors.push({ kind: "pixgroup", raw: pg, x: pg.x, y: pg.y, w: pg.w, h: pg.h });
+            }
+        }
+        // 3. Native ComfyUI Groups
+        const natArr = gr._groups || gr.groups;
+        if (Array.isArray(natArr)) {
+            for (const ng of natArr) {
+                if (!ng) continue;
+                const pos = ng._pos || ng.pos;
+                const size = ng._size || ng.size;
+                if (pos && size) {
+                    descriptors.push({ kind: "nativegroup", raw: ng, x: pos[0], y: pos[1], w: size[0], h: size[1] });
+                }
+            }
+        }
+
+        if (!descriptors.length) return;
+
+        const refLeft  = prevBounds ? prevBounds.x : sourceGroup.x;
+        const refRight = prevBounds ? (prevBounds.x + prevBounds.w) : (sourceGroup.x + sourceGroup.w);
+        const refTop   = prevBounds ? prevBounds.y : sourceGroup.y;
+
+        // A) Empuxo Lateral para a Direita (Cascata Esquerda -> Direita)
+        if (grewRight) {
+            const rightCands = descriptors
+                .filter(d => d.x >= refLeft + 10)
+                .sort((a, b) => a.x - b.x);
+            const pushers = [{ x: sourceGroup.x, y: sourceGroup.y, w: sourceGroup.w, h: sourceGroup.h }];
+
+            for (const cand of rightCands) {
+                let targetX = cand.x;
+                for (const p of pushers) {
+                    const overlapsY = (cand.y < p.y + p.h) && (cand.y + cand.h > p.y);
+                    if (overlapsY && cand.x >= p.x && cand.x < p.x + p.w + groupGap) {
+                        const reqX = snap(p.x + p.w + groupGap);
+                        if (reqX > targetX) targetX = reqX;
+                    }
+                }
+                if (targetX > cand.x) {
+                    shiftGroupDescriptorByDelta(cand, targetX - cand.x, 0, gr);
+                    pushers.push(cand);
+                }
+            }
+        }
+
+        // B) Empuxo Lateral para a Esquerda (quando o trilho esquerdo abre/alarga ou canto esquerdo é esticado)
+        if (grewLeft) {
+            const leftCands = descriptors
+                .filter(d => (d.x + d.w) <= refRight - 10 && d.x < sourceGroup.x)
+                .sort((a, b) => (b.x + b.w) - (a.x + a.w));
+            const pushers = [{ x: sourceGroup.x, y: sourceGroup.y, w: sourceGroup.w, h: sourceGroup.h }];
+
+            for (const cand of leftCands) {
+                let targetX = cand.x;
+                for (const p of pushers) {
+                    const overlapsY = (cand.y < p.y + p.h) && (cand.y + cand.h > p.y);
+                    if (overlapsY && cand.x < p.x && (cand.x + cand.w) > p.x - groupGap) {
+                        const reqX = snap(p.x - groupGap - cand.w);
+                        if (reqX < targetX) targetX = reqX;
+                    }
+                }
+                if (targetX < cand.x) {
+                    shiftGroupDescriptorByDelta(cand, targetX - cand.x, 0, gr);
+                    pushers.push(cand);
+                }
+            }
+        }
+
+        // C) Empuxo Vertical para Baixo (Cascata Topo -> Base para grupos na mesma coluna horizontal)
+        if (grewDown) {
+            const downCands = descriptors
+                .filter(d => d.y >= refTop + 10)
+                .sort((a, b) => a.y - b.y);
+            const pushers = [{ x: sourceGroup.x, y: sourceGroup.y, w: sourceGroup.w, h: sourceGroup.h }];
+
+            for (const cand of downCands) {
+                let targetY = cand.y;
+                for (const p of pushers) {
+                    const overlapsX = (cand.x < p.x + p.w) && (cand.x + cand.w > p.x);
+                    if (overlapsX && cand.y >= p.y && cand.y < p.y + p.h + groupGap) {
+                        const reqY = snap(p.y + p.h + groupGap);
+                        if (reqY > targetY) targetY = reqY;
+                    }
+                }
+                if (targetY > cand.y) {
+                    shiftGroupDescriptorByDelta(cand, 0, targetY - cand.y, gr);
+                    pushers.push(cand);
+                }
+            }
+        }
+    } finally {
+        _pushingNeighbors = false;
+    }
+}
+
+/**
+ * Resolve colisões entre grupos ao soltar o mouse após mover um ou mais EVM Groups (`onDrop`).
+ * Permite cruzar livremente outros grupos durante o arraste (para trocar posições no canvas)
+ * e, ao soltar, empurra em cascata os grupos vizinhos garantindo o espaçamento canônico `PAD` (30px).
+ *
+ * @param {Array<{gr: object, startX: number, startY: number}>} movedItems
+ * @param {object} [graph]
+ */
+function resolveGroupCollisionsOnMoveDrop(movedItems, graph = null) {
+    if (!EVM_CFG.pushNeighborsOnExpand || !Array.isArray(movedItems) || !movedItems.length || _pushingNeighbors) return;
+    const gr = graph || curGraph();
+    if (!gr) return;
+
+    const rawMoved = movedItems.filter(it =>
+        it && it.gr && !isHiddenGroup(it.gr) &&
+        (Math.abs(it.gr.x - it.startX) >= 4 || Math.abs(it.gr.y - it.startY) >= 4)
+    );
+    if (!rawMoved.length) return;
+
+    // Ignora subgrupos aninhados cujo grupo pai também está sendo movido no mesmo lote
+    const topMoved = rawMoved.filter(it =>
+        !rawMoved.some(other => other !== it && containsBox(other.gr, it.gr))
+    );
+    if (!topMoved.length) return;
+
+    const movedRawSet = new Set();
+    for (const it of rawMoved) {
+        movedRawSet.add(it.gr);
+        for (const sub of containedEvmGroups(it.gr)) movedRawSet.add(sub);
+    }
+
+    _pushingNeighbors = true;
+    try {
+        const groupGap = PAD; // 3 quadradinhos (30px)
+        const descriptors = [];
+
+        const isNestedWithAnyMoved = (box) =>
+            topMoved.some(it => containsBox(it.gr, box) || containsBox(box, it.gr));
+
+        // 1. EVM Groups estacionários
+        for (const eg of ensureEvmGroups(gr)) {
+            if (!eg || movedRawSet.has(eg) || isHiddenGroup(eg)) continue;
+            if (isNestedWithAnyMoved(eg)) continue;
+            descriptors.push({ kind: "evmgroup", raw: eg, x: eg.x, y: eg.y, w: eg.w, h: eg.h });
+        }
+        // 2. Pixaroma Groups estacionários
+        const pixArr = gr.extra?.pixaromaGroups;
+        if (Array.isArray(pixArr)) {
+            for (const pg of pixArr) {
+                if (!pg || isNestedWithAnyMoved(pg)) continue;
+                descriptors.push({ kind: "pixgroup", raw: pg, x: pg.x, y: pg.y, w: pg.w, h: pg.h });
+            }
+        }
+        // 3. Native ComfyUI Groups estacionários
+        const natArr = gr._groups || gr.groups;
+        if (Array.isArray(natArr)) {
+            for (const ng of natArr) {
+                if (!ng) continue;
+                const pos = ng._pos || ng.pos;
+                const size = ng._size || ng.size;
+                if (pos && size) {
+                    const box = { x: pos[0], y: pos[1], w: size[0], h: size[1] };
+                    if (isNestedWithAnyMoved(box)) continue;
+                    descriptors.push({ kind: "nativegroup", raw: ng, x: box.x, y: box.y, w: box.w, h: box.h });
+                }
+            }
+        }
+
+        if (!descriptors.length) return;
+
+        // Ordena grupos movidos da esquerda para a direita, topo para a base
+        const sortedMoved = topMoved.slice().sort((a, b) => (a.gr.x - b.gr.x) || (a.gr.y - b.gr.y));
+
+        const isVerticalStackCollision = (a, b) => {
+            const overlapW = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+            const overlapH = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+            if (overlapW <= 0) return false;
+            if (overlapH <= 0) return true; // Mesma coluna X, separados apenas pelo gap Y
+            const aCx = a.x + a.w / 2, aCy = a.y + a.h / 2;
+            const bCx = b.x + b.w / 2, bCy = b.y + b.h / 2;
+            return (
+                overlapW > Math.min(a.w, b.w) * 0.5 &&
+                overlapH < overlapW * 0.6 &&
+                Math.abs(aCy - bCy) > Math.abs(aCx - bCx)
+            );
+        };
+
+        for (const item of sortedMoved) {
+            const mg = item.gr;
+            const dx = mg.x - item.startX;
+            const dy = mg.y - item.startY;
+            const mDesc = { kind: "evmgroup", raw: mg, x: mg.x, y: mg.y, w: mg.w, h: mg.h };
+
+            // Identifica colisões horizontais diretas com o grupo solto
+            const mCx = mDesc.x + mDesc.w / 2;
+            const horizLeftHits = [];
+            const horizRightHits = [];
+
+            for (const d of descriptors) {
+                const overlapsY = (d.y < mDesc.y + mDesc.h) && (d.y + d.h > mDesc.y);
+                const hitsX = (d.x < mDesc.x + mDesc.w + groupGap) && (d.x + d.w > mDesc.x - groupGap);
+                if (overlapsY && hitsX && !isVerticalStackCollision(mDesc, d)) {
+                    const dCx = d.x + d.w / 2;
+                    if (dCx < mCx) horizLeftHits.push(d);
+                    else horizRightHits.push(d);
+                }
+            }
+
+            // Se o grupo foi solto encostando na borda direita de um grupo à esquerda (horizLeftHits)
+            // e ou estava indo para a direita (dx >= -10) ou foi solto ENTRE dois grupos (horizRightHits.length > 0),
+            // encaixa o próprio grupo movido a 30px após o grupo da esquerda antes de empurrar os da direita!
+            const shouldPushLeft = (dx < -10) && horizLeftHits.length > 0 && horizRightHits.length === 0;
+            if (horizLeftHits.length > 0 && !shouldPushLeft) {
+                let minAllowedX = mDesc.x;
+                for (const lh of horizLeftHits) {
+                    const reqX = snap(lh.x + lh.w + groupGap);
+                    if (reqX > minAllowedX) minAllowedX = reqX;
+                }
+                if (minAllowedX > mDesc.x) {
+                    shiftGroupDescriptorByDelta(mDesc, minAllowedX - mDesc.x, 0, gr);
+                }
+            }
+
+            // A) Cascata para a Direita (padrão principal de fluxo horizontal)
+            {
+                const rightCands = descriptors
+                    .filter(d => (d.x + d.w / 2) >= (mDesc.x + mDesc.w / 2) || d.x >= mDesc.x)
+                    .sort((a, b) => a.x - b.x);
+                const pushers = [mDesc];
+
+                for (const cand of rightCands) {
+                    let targetX = cand.x;
+                    for (const p of pushers) {
+                        const overlapsY = (cand.y < p.y + p.h) && (cand.y + cand.h > p.y);
+                        const hitsX = (cand.x < p.x + p.w + groupGap) && (cand.x + cand.w > p.x - groupGap);
+                        if (overlapsY && hitsX) {
+                            if (p === mDesc && isVerticalStackCollision(mDesc, cand)) continue;
+                            const reqX = snap(p.x + p.w + groupGap);
+                            if (reqX > targetX) targetX = reqX;
+                        }
+                    }
+                    if (targetX > cand.x) {
+                        shiftGroupDescriptorByDelta(cand, targetX - cand.x, 0, gr);
+                        pushers.push(cand);
+                    }
+                }
+            }
+
+            // B) Cascata para a Esquerda (quando arrastado para a esquerda contra um grupo sem vizinho bloqueando à direita)
+            if (shouldPushLeft) {
+                const leftCands = descriptors
+                    .filter(d => (d.x + d.w / 2) < (mDesc.x + mDesc.w / 2))
+                    .sort((a, b) => (b.x + b.w) - (a.x + a.w));
+                const pushers = [mDesc];
+
+                for (const cand of leftCands) {
+                    let targetX = cand.x;
+                    for (const p of pushers) {
+                        const overlapsY = (cand.y < p.y + p.h) && (cand.y + cand.h > p.y);
+                        const hitsX = (cand.x < p.x + p.w + groupGap) && (cand.x + cand.w > p.x - groupGap);
+                        if (overlapsY && hitsX) {
+                            if (p === mDesc && isVerticalStackCollision(mDesc, cand)) continue;
+                            const reqX = snap(p.x - groupGap - cand.w);
+                            if (reqX < targetX) targetX = reqX;
+                        }
+                    }
+                    if (targetX < cand.x) {
+                        shiftGroupDescriptorByDelta(cand, targetX - cand.x, 0, gr);
+                        pushers.push(cand);
+                    }
+                }
+            }
+
+            // C) Colisões Verticais (quando grupos estão empilhados na mesma coluna)
+            const mCy = mDesc.y + mDesc.h / 2;
+            const vertTopHits = [];
+            const vertBottomHits = [];
+            for (const d of descriptors) {
+                const overlapsX = (d.x < mDesc.x + mDesc.w) && (d.x + d.w > mDesc.x);
+                const hitsY = (d.y < mDesc.y + mDesc.h + groupGap) && (d.y + d.h > mDesc.y - groupGap);
+                if (overlapsX && hitsY) {
+                    const dCy = d.y + d.h / 2;
+                    if (dCy < mCy) vertTopHits.push(d);
+                    else vertBottomHits.push(d);
+                }
+            }
+
+            const shouldPushUp = (dy < -10) && vertTopHits.length > 0 && vertBottomHits.length === 0;
+            if (vertTopHits.length > 0 && !shouldPushUp) {
+                let minAllowedY = mDesc.y;
+                for (const th of vertTopHits) {
+                    const reqY = snap(th.y + th.h + groupGap);
+                    if (reqY > minAllowedY) minAllowedY = reqY;
+                }
+                if (minAllowedY > mDesc.y) {
+                    shiftGroupDescriptorByDelta(mDesc, 0, minAllowedY - mDesc.y, gr);
+                }
+            }
+
+            // Cascata para Baixo
+            {
+                const downCands = descriptors
+                    .filter(d => (d.y + d.h / 2) >= (mDesc.y + mDesc.h / 2) || d.y >= mDesc.y)
+                    .sort((a, b) => a.y - b.y);
+                const pushers = [mDesc];
+
+                for (const cand of downCands) {
+                    let targetY = cand.y;
+                    for (const p of pushers) {
+                        const overlapsX = (cand.x < p.x + p.w) && (cand.x + cand.w > p.x);
+                        const hitsY = (cand.y < p.y + p.h + groupGap) && (cand.y + cand.h > p.y - groupGap);
+                        if (overlapsX && hitsY) {
+                            const reqY = snap(p.y + p.h + groupGap);
+                            if (reqY > targetY) targetY = reqY;
+                        }
+                    }
+                    if (targetY > cand.y) {
+                        shiftGroupDescriptorByDelta(cand, 0, targetY - cand.y, gr);
+                        pushers.push(cand);
+                    }
+                }
+            }
+
+            // Cascata para Cima
+            if (shouldPushUp) {
+                const upCands = descriptors
+                    .filter(d => (d.y + d.h / 2) < (mDesc.y + mDesc.h / 2))
+                    .sort((a, b) => (b.y + b.h) - (a.y + a.h));
+                const pushers = [mDesc];
+
+                for (const cand of upCands) {
+                    let targetY = cand.y;
+                    for (const p of pushers) {
+                        const overlapsX = (cand.x < p.x + p.w) && (cand.x + cand.w > p.x);
+                        const hitsY = (cand.y < p.y + p.h + groupGap) && (cand.y + cand.h > p.y - groupGap);
+                        if (overlapsX && hitsY) {
+                            const reqY = snap(p.y - groupGap - cand.h);
+                            if (reqY < targetY) targetY = reqY;
+                        }
+                    }
+                    if (targetY < cand.y) {
+                        shiftGroupDescriptorByDelta(cand, 0, targetY - cand.y, gr);
+                        pushers.push(cand);
+                    }
+                }
+            }
+        }
+    } finally {
+        _pushingNeighbors = false;
+    }
+}
+
 function layoutDockedNodes(g, graph, opts = {}) {
     if (!g || g.folded) return;
     const gr = graph || curGraph();
     if (!gr) return;
     ensureDockArrays(g);
+
+    const prevBounds = opts.prevBounds || { x: g.x, y: g.y, w: g.w, h: g.h };
 
     const getNodes = resolveNodeList(gr, g.getNodeIds);
     const setNodes = resolveNodeList(gr, g.setNodeIds);
@@ -696,7 +1163,17 @@ function layoutDockedNodes(g, graph, opts = {}) {
     const oldLeftOpenW = g.leftRailOpen === false ? 0 : (g.leftRailW || DEFAULT_RAIL_W);
     const oldRightOpenW = g.rightRailOpen === false ? 0 : (g.rightRailW || DEFAULT_RAIL_W);
     const centerX0 = snap(g.x + oldLeftOpenW);
-    const currentCenterW = Math.max(MIN_CENTER_W, snap(g.w - oldLeftOpenW - oldRightOpenW));
+    let currentCenterW = Math.max(MIN_CENTER_W, snap(g.w - oldLeftOpenW - oldRightOpenW));
+
+    const centralNodes = opts.centralNodes || getCentralMemberNodes(g, gr);
+    if (_drag?.mode !== "resize") {
+        for (const cn of centralNodes) {
+            if (!cn || !cn.pos) continue;
+            const nw = cn.flags?.collapsed ? computeNodeCollapsedWidth(cn) : snapUp(cn.size?.[0] || 140);
+            const reqCenterW = snap((snap(cn.pos[0]) + nw + PAD) - centerX0);
+            if (reqCenterW > currentCenterW) currentCenterW = reqCenterW;
+        }
+    }
 
     g.leftRailW = targetLeftW;
     g.rightRailW = targetRightW;
@@ -743,7 +1220,6 @@ function layoutDockedNodes(g, graph, opts = {}) {
     }
 
     // 5. Considera também a base visual dos nós centrais para garantir margem inferior de 3 quadradinhos (PAD = 30px)
-    const centralNodes = opts.centralNodes || getCentralMemberNodes(g, gr);
     for (const cn of centralNodes) {
         const bodyH = getNodeActiveBodyHeight(cn);
         const nodeBottom = snap(cn.pos[1]) + bodyH;
@@ -754,6 +1230,10 @@ function layoutDockedNodes(g, graph, opts = {}) {
     if (opts.shrinkHeightToFit || requiredH > g.h) {
         g.h = requiredH;
     }
+
+    if (!opts.skipPush) {
+        pushNeighborGroupsOnExpand(g, prevBounds, gr);
+    }
 }
 
 /**
@@ -763,7 +1243,7 @@ function layoutDockedNodes(g, graph, opts = {}) {
  * - Gap de 3 quadradinhos visíveis (NODE_VGAP = 60px) verticalmente entre os nós da mesma coluna.
  * - Gap de 3 quadradinhos (NODE_HGAP = 30px) horizontalmente entre colunas.
  * - Redimensiona a largura do grupo (g.w) e a altura (g.h) em tempo real ao redimensionar
- *   qualquer nó horizontalmente ou verticalmente.
+ *   qualquer nó horizontalmente ou verticalmente, empurrando grupos vizinhos para não sobrepor.
  */
 function tidyGroupCentralNodes(g, graph, explicitCentralNodes = null, opts = {}) {
     if (!g || g.folded) return;
@@ -771,14 +1251,16 @@ function tidyGroupCentralNodes(g, graph, explicitCentralNodes = null, opts = {})
     if (!gr) return;
     ensureDockArrays(g);
 
+    const prevBounds = { x: g.x, y: g.y, w: g.w, h: g.h };
+
     const centralNodes = explicitCentralNodes || getCentralMemberNodes(g, gr);
     if (!centralNodes.length) {
-        layoutDockedNodes(g, gr, { shrinkHeightToFit: true, isLiveReflow: opts.isLiveReflow });
+        layoutDockedNodes(g, gr, { shrinkHeightToFit: true, isLiveReflow: opts.isLiveReflow, prevBounds });
         return;
     }
 
     // Primeiro garante que leftRailW e rightRailW já estejam calculados para os Set/Get atuais
-    layoutDockedNodes(g, gr, { centralNodes, isLiveReflow: opts.isLiveReflow });
+    layoutDockedNodes(g, gr, { centralNodes, isLiveReflow: opts.isLiveReflow, skipPush: true });
 
     const lOpenW = leftRailW(g);
     const rOpenW = rightRailW(g);
@@ -830,8 +1312,8 @@ function tidyGroupCentralNodes(g, graph, explicitCentralNodes = null, opts = {})
     const requiredCenterW = Math.max(MIN_CENTER_W, snap((colX - NODE_HGAP + PAD) - centerX0));
     g.w = snap(lOpenW + requiredCenterW + rOpenW);
 
-    // Reposiciona o trilho direito e ajusta a altura final do grupo com 3 quadradinhos (PAD = 30px) na base
-    layoutDockedNodes(g, gr, { centralNodes, shrinkHeightToFit: true, isLiveReflow: opts.isLiveReflow });
+    // Reposiciona o trilho direito, ajusta a altura final do grupo e empurra vizinhos se cresceu
+    layoutDockedNodes(g, gr, { centralNodes, shrinkHeightToFit: true, isLiveReflow: opts.isLiveReflow, prevBounds });
 }
 
 /**
@@ -1120,6 +1602,7 @@ function toggleLeftRail(g, forceState) {
     const nextOpen = typeof forceState === "boolean" ? forceState : (g.leftRailOpen === false);
     if (nextOpen === (g.leftRailOpen !== false)) return;
 
+    const prevBounds = { x: g.x, y: g.y, w: g.w, h: g.h };
     const rw = g.leftRailW || DEFAULT_RAIL_W;
     if (nextOpen) {
         g.leftRailOpen = true;
@@ -1130,7 +1613,7 @@ function toggleLeftRail(g, forceState) {
         g.x = snap(g.x + rw);
         g.w = Math.max(MIN_CENTER_W + rightRailW(g), snap(g.w - rw));
     }
-    layoutDockedNodes(g, curGraph(), { shrinkHeightToFit: true });
+    layoutDockedNodes(g, curGraph(), { shrinkHeightToFit: true, prevBounds });
     invalidateHidden();
     updateHideCSS();
     markChanged();
@@ -1145,6 +1628,7 @@ function toggleRightRail(g, forceState) {
     const nextOpen = typeof forceState === "boolean" ? forceState : (g.rightRailOpen === false);
     if (nextOpen === (g.rightRailOpen !== false)) return;
 
+    const prevBounds = { x: g.x, y: g.y, w: g.w, h: g.h };
     const rw = g.rightRailW || DEFAULT_RAIL_W;
     if (nextOpen) {
         g.rightRailOpen = true;
@@ -1153,7 +1637,7 @@ function toggleRightRail(g, forceState) {
         g.rightRailOpen = false;
         g.w = Math.max(leftRailW(g) + MIN_CENTER_W, snap(g.w - rw));
     }
-    layoutDockedNodes(g, curGraph(), { shrinkHeightToFit: true });
+    layoutDockedNodes(g, curGraph(), { shrinkHeightToFit: true, prevBounds });
     invalidateHidden();
     updateHideCSS();
     markChanged();
@@ -1376,12 +1860,13 @@ function foldEvmGroup(g) {
 
 function unfoldEvmGroup(g) {
     if (!g || !g.folded) return;
+    const prevBounds = { x: g.x, y: g.y, w: g.w, h: g.h };
     g.folded = false;
     g.h = Math.max(MIN_GROUP_H, snap(g.hOpen || MIN_GROUP_H));
     g.w = Math.max(minGroupWidth(g), snap(g.wOpen || g.w));
     delete g.foldNodes;
     delete g.foldGroups;
-    layoutDockedNodes(g);
+    layoutDockedNodes(g, curGraph(), { prevBounds });
     invalidateHidden();
     updateHideCSS();
     markChanged();
@@ -2457,6 +2942,7 @@ function onDragMove(e) {
         }
     } else if (_drag.mode === "resize") {
         const g = _drag.g;
+        const prevBounds = { x: g.x, y: g.y, w: g.w, h: g.h };
         const c = _drag.corner, ax = _drag.ax, ay = _drag.ay;
         const cx = snap(p[0]);
         const cy = snap(p[1]);
@@ -2467,7 +2953,7 @@ function onDragMove(e) {
         g.h = h;
         g.x = c.includes("l") ? ax - w : ax;
         g.y = c.includes("t") ? ay - h : ay;
-        layoutDockedNodes(g);
+        layoutDockedNodes(g, curGraph(), { prevBounds });
     }
     e.preventDefault();
     e.stopPropagation();
@@ -2477,6 +2963,8 @@ function onDragMove(e) {
 function onDragUp() {
     if (!_drag) return;
     const g = _drag.g;
+    const dragMode = _drag.mode;
+    const groupStarts = _drag.groupStarts;
     _drag = null;
     stopWinDrag();
     if (_pendingEvmSelect != null) {
@@ -2485,13 +2973,30 @@ function onDragUp() {
         const targetG = ensureEvmGroups().find(x => x.id === gid);
         if (targetG) selectEvmGroup(targetG);
     }
+    if (dragMode === "move" && Array.isArray(groupStarts) && groupStarts.length) {
+        resolveGroupCollisionsOnMoveDrop(
+            groupStarts.map(s => ({ gr: s.gr, startX: s.x, startY: s.y })),
+            curGraph()
+        );
+    }
     if (g) layoutDockedNodes(g);
+    repaint();
     markChanged();
 }
 
 function onGlobalPointerUp(e) {
     _lmbDown = false;
+    const activeCarry = _carry;
     _carry = null;
+
+    if (activeCarry && Array.isArray(activeCarry.frames) && activeCarry.frames.length) {
+        resolveGroupCollisionsOnMoveDrop(
+            activeCarry.frames.map(f => ({ gr: f.g, startX: f.x, startY: f.y })),
+            curGraph()
+        );
+        repaint();
+        markChanged();
+    }
 
     if (_pendingBodyAdditiveToggle) {
         const pending = _pendingBodyAdditiveToggle;
@@ -2590,7 +3095,29 @@ function onGlobalPointerUp(e) {
         }
     }
 
-    if (changed) markChanged();
+    // Se nós centrais regulares foram movidos dentro de um EVM Group (ou soltos nele),
+    // atualiza as bordas do grupo e empurra vizinhos caso o grupo tenha crescido
+    if (!activeCarry && selNodes.length) {
+        const groupsToRefresh = new Set();
+        for (const n of selNodes) {
+            if (!n || !n.pos || n.type === "GetNode" || n.type === "SetNode") continue;
+            const b = nodeVisualBounds(n);
+            const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+            const targetG = evmGroupAt([cx, cy]);
+            if (targetG && !targetG.folded) {
+                groupsToRefresh.add(targetG);
+            }
+        }
+        for (const tg of groupsToRefresh) {
+            layoutDockedNodes(tg, graph);
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        repaint();
+        markChanged();
+    }
 }
 
 let _cursorOverride = false;
@@ -3032,6 +3559,17 @@ const EVM_SETTINGS_DEFS = [
         onChange: (val) => {
             EVM_CFG.autoReflow = Boolean(val);
             if (EVM_CFG.autoReflow) refreshAllGroupsLayout();
+        },
+    },
+    {
+        id: "EVMGroup.Layout.PushNeighborsOnExpand",
+        name: "Empurrar grupos vizinhos automaticamente ao expandir (Anti-Colisão)",
+        type: "boolean",
+        defaultValue: true,
+        tooltip: "Quando um grupo cresce lateralmente ou verticalmente (por resize de node, abertura de painel Get/Set, desdobramento ou resize manual), desloca em cascata os grupos vizinhos e todos os seus nodes para evitar sobreposição.",
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Anti-Colisão entre Grupos"],
+        onChange: (val) => {
+            EVM_CFG.pushNeighborsOnExpand = Boolean(val);
         },
     },
     {
