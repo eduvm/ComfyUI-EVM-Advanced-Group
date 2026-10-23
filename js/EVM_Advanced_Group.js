@@ -443,19 +443,18 @@ function computeNodeCollapsedWidth(node) {
  */
 function getDockedNodeActiveWidth(node) {
     if (!node) return MIN_RAIL_INNER_W;
-    const expandedReqW = computeSetGetExpandedRequiredWidth(node);
+    if (node.flags?.collapsed) {
+        return computeNodeCollapsedWidth(node);
+    }
 
-    // Ajusta automaticamente a largura mínima quando o texto do Set/Get muda,
+    const expandedReqW = computeSetGetExpandedRequiredWidth(node);
+    // Ajusta automaticamente a largura mínima quando o texto do Set/Get muda (e está expandido),
     // mas permite redimensionamento horizontal manual sem travar o tamanho anterior.
     if (node.size && node._evmLastReqW !== expandedReqW) {
         if (!node.size[0] || node.size[0] < expandedReqW || node.size[0] === node._evmLastReqW) {
             node.size[0] = expandedReqW;
         }
         node._evmLastReqW = expandedReqW;
-    }
-
-    if (node.flags?.collapsed) {
-        return computeNodeCollapsedWidth(node);
     }
 
     const userW = node.size?.[0] || expandedReqW;
@@ -599,6 +598,16 @@ function findOwnerGroupForDockedNode(node) {
     return null;
 }
 
+let _evmConfiguring = false;
+function isGraphConfiguring(graph) {
+    return !!(
+        _evmConfiguring ||
+        app.configuringGraph ||
+        graph?._evmConfiguring ||
+        curGraph()?._evmConfiguring
+    );
+}
+
 /**
  * Retorna apenas os nós centrais (custom nodes normais) contidos dentro do grupo,
  * excluindo os GetNodes e SetNodes ancorados nos trilhos laterais.
@@ -607,29 +616,34 @@ function getCentralMemberNodes(g, graph) {
     const gr = graph || curGraph();
     if (!gr || !g || g.folded) return [];
     ensureDockArrays(g);
-    const dockedSet = new Set([
-        ...g.getNodeIds.map(String),
-        ...g.setNodeIds.map(String),
-    ]);
+    const allGroups = ensureEvmGroups(gr);
+    const validGroupIds = new Set(allGroups.filter(Boolean).map(og => og.id));
+    const allDockedSet = new Set();
+    for (const og of allGroups) {
+        if (!og) continue;
+        ensureDockArrays(og);
+        for (const id of og.getNodeIds) allDockedSet.add(String(id));
+        for (const id of og.setNodeIds) allDockedSet.add(String(id));
+    }
+    const isResizingGroup = (_drag?.mode === "resize" && _drag?.g === g);
     const out = [];
     for (const n of (gr._nodes || [])) {
         if (!n || !n.pos) continue;
-        if (dockedSet.has(String(n.id))) continue;
+        if (allDockedSet.has(String(n.id))) continue;
+        if (!isResizingGroup && n._evmLastGroupId && validGroupIds.has(n._evmLastGroupId)) {
+            if (n._evmLastGroupId === g.id) {
+                out.push(n);
+            }
+            continue;
+        }
         const b = nodeVisualBounds(n);
         const cx = b.x + b.w / 2;
         const cy = b.y + b.h / 2;
         const centerInGroup = (cx >= g.x && cx <= g.x + g.w && cy >= g.y && cy <= g.y + g.h);
-        // Mantém o nó no grupo durante redimensionamento horizontal/vertical rápido
-        // (onde o canto superior esquerdo permanece ancorado dentro do grupo)
-        const topLeftInGroup = (
-            n._evmLastGroupId === g.id &&
-            b.x >= g.x && b.x <= g.x + g.w &&
-            b.y >= g.y && b.y <= g.y + g.h
-        );
-        if (centerInGroup || topLeftInGroup) {
+        if (centerInGroup) {
             n._evmLastGroupId = g.id;
             out.push(n);
-        } else if (n._evmLastGroupId === g.id) {
+        } else if (isResizingGroup && n._evmLastGroupId === g.id) {
             delete n._evmLastGroupId;
         }
     }
@@ -1135,7 +1149,7 @@ function resolveGroupCollisionsOnMoveDrop(movedItems, graph = null) {
 function layoutDockedNodes(g, graph, opts = {}) {
     if (!g || g.folded) return;
     const gr = graph || curGraph();
-    if (!gr) return;
+    if (!gr || isGraphConfiguring(gr)) return;
     ensureDockArrays(g);
 
     const prevBounds = opts.prevBounds || { x: g.x, y: g.y, w: g.w, h: g.h };
@@ -1159,21 +1173,11 @@ function layoutDockedNodes(g, graph, opts = {}) {
     }
     const targetRightW = snapUp(widestSet + PAD * 2); // 3 quadradinhos (30px) de margem de cada lado
 
-    // 3. Ajusta leftRailW e rightRailW mantendo a Área Central ancorada no mesmo X do canvas
+    // 3. Mantém g.x ancorado e garante que a Área Central tenha sempre PAD (30px) à esquerda e à direita
     const oldLeftOpenW = g.leftRailOpen === false ? 0 : (g.leftRailW || DEFAULT_RAIL_W);
     const oldRightOpenW = g.rightRailOpen === false ? 0 : (g.rightRailW || DEFAULT_RAIL_W);
-    const centerX0 = snap(g.x + oldLeftOpenW);
-    let currentCenterW = Math.max(MIN_CENTER_W, snap(g.w - oldLeftOpenW - oldRightOpenW));
 
     const centralNodes = opts.centralNodes || getCentralMemberNodes(g, gr);
-    if (_drag?.mode !== "resize") {
-        for (const cn of centralNodes) {
-            if (!cn || !cn.pos) continue;
-            const nw = cn.flags?.collapsed ? computeNodeCollapsedWidth(cn) : snapUp(cn.size?.[0] || 140);
-            const reqCenterW = snap((snap(cn.pos[0]) + nw + PAD) - centerX0);
-            if (reqCenterW > currentCenterW) currentCenterW = reqCenterW;
-        }
-    }
 
     g.leftRailW = targetLeftW;
     g.rightRailW = targetRightW;
@@ -1181,7 +1185,33 @@ function layoutDockedNodes(g, graph, opts = {}) {
     const newLeftOpenW = g.leftRailOpen === false ? 0 : g.leftRailW;
     const newRightOpenW = g.rightRailOpen === false ? 0 : g.rightRailW;
 
-    g.x = snap(centerX0 - newLeftOpenW);
+    g.x = snap(g.x);
+    const centerX0 = snap(g.x + newLeftOpenW);
+    let currentCenterW = Math.max(MIN_CENTER_W, snap(g.w - oldLeftOpenW - oldRightOpenW));
+
+    if (_drag?.mode !== "resize" && !app.canvas?.node_dragged && centralNodes.length > 0) {
+        let minX = Infinity;
+        let maxRight = -Infinity;
+        for (const cn of centralNodes) {
+            if (!cn || !cn.pos) continue;
+            const nx = snap(cn.pos[0]);
+            const nw = cn.flags?.collapsed ? computeNodeCollapsedWidth(cn) : snapUp(cn.size?.[0] || 140);
+            if (nx < minX) minX = nx;
+            if (nx + nw > maxRight) maxRight = nx + nw;
+        }
+        if (Number.isFinite(minX) && Number.isFinite(maxRight)) {
+            const targetMinX = snap(centerX0 + PAD);
+            const dxCenter = snap(targetMinX - minX);
+            if (dxCenter !== 0) {
+                for (const cn of centralNodes) {
+                    if (!cn || !cn.pos) continue;
+                    setNodePos(cn, cn.pos[0] + dxCenter, cn.pos[1]);
+                }
+            }
+            currentCenterW = Math.max(MIN_CENTER_W, snap((maxRight - minX) + PAD * 2));
+        }
+    }
+
     g.w = snap(newLeftOpenW + currentCenterW + newRightOpenW);
     g.y = snap(g.y);
 
@@ -1248,7 +1278,7 @@ function layoutDockedNodes(g, graph, opts = {}) {
 function tidyGroupCentralNodes(g, graph, explicitCentralNodes = null, opts = {}) {
     if (!g || g.folded) return;
     const gr = graph || curGraph();
-    if (!gr) return;
+    if (!gr || isGraphConfiguring(gr)) return;
     ensureDockArrays(g);
 
     const prevBounds = { x: g.x, y: g.y, w: g.w, h: g.h };
@@ -1316,6 +1346,34 @@ function tidyGroupCentralNodes(g, graph, explicitCentralNodes = null, opts = {})
     layoutDockedNodes(g, gr, { centralNodes, shrinkHeightToFit: true, isLiveReflow: opts.isLiveReflow, prevBounds });
 }
 
+function syncGroupLayoutSignature(g, graph, explicitCentralNodes = null) {
+    if (!g) return;
+    const gr = graph || curGraph();
+    if (!gr) return;
+    ensureDockArrays(g);
+    const getNodes = resolveNodeList(gr, g.getNodeIds);
+    const setNodes = resolveNodeList(gr, g.setNodeIds);
+    const centralNodes = explicitCentralNodes || getCentralMemberNodes(g, gr);
+
+    let sig = `${g.leftRailOpen}:${g.rightRailOpen}|`;
+    for (const n of getNodes) {
+        sig += `G${n.id}:${n.flags?.collapsed ? 1 : 0}:${Math.round(n.size?.[0] || 0)}:${Math.round(n.size?.[1] || 0)}:${n.title || ""}:${n.widgets?.[0]?.value || ""};`;
+    }
+    for (const n of setNodes) {
+        sig += `S${n.id}:${n.flags?.collapsed ? 1 : 0}:${Math.round(n.size?.[0] || 0)}:${Math.round(n.size?.[1] || 0)}:${n.title || ""}:${n.widgets?.[0]?.value || ""};`;
+    }
+    for (const cn of centralNodes) {
+        const cFlag = cn.flags?.collapsed ? 1 : 0;
+        const cW = Math.round(cn.size?.[0] || 140);
+        const cH = cFlag ? 0 : Math.round(cn.size?.[1] || 30);
+        cn._evmPrevCollapsed = cFlag;
+        cn._evmPrevW = cW;
+        cn._evmPrevBodyH = cH;
+        sig += `C${cn.id}:${cFlag}:${cW}:${cH};`;
+    }
+    g._lastLayoutSig = sig;
+}
+
 /**
  * Monitora alterações de estado maximizado/minimizado (collapse) ou tamanho (horizontal e vertical)
  * dos nós dentro de cada EVM Group e faz reflow imediato para que o grupo e os nós acompanhem em tempo real.
@@ -1323,7 +1381,7 @@ function tidyGroupCentralNodes(g, graph, explicitCentralNodes = null, opts = {})
 function checkAndReflowGroupIfNeeded(g, graph) {
     if (!EVM_CFG.autoReflow || !g || g.folded || _drag || _carry || app.canvas?.dragging_rectangle) return;
     const gr = graph || curGraph();
-    if (!gr) return;
+    if (!gr || isGraphConfiguring(gr)) return;
     ensureDockArrays(g);
 
     const getNodes = resolveNodeList(gr, g.getNodeIds);
@@ -1340,6 +1398,7 @@ function checkAndReflowGroupIfNeeded(g, graph) {
     }
 
     let centralCollapseOrSizeChanged = false;
+    const isInitialLoad = (g._lastLayoutSig === undefined);
     for (const cn of centralNodes) {
         const cFlag = cn.flags?.collapsed ? 1 : 0;
         const cW = Math.round(cn.size?.[0] || 140);
@@ -1359,30 +1418,19 @@ function checkAndReflowGroupIfNeeded(g, graph) {
     if (sig === g._lastLayoutSig) return;
     g._lastLayoutSig = sig;
 
-    if (centralCollapseOrSizeChanged || centralNodes.length > 0) {
+    // Na primeira renderização após abrir um workflow ou trocar de aba (isInitialLoad),
+    // apenas registra a assinatura inicial sem forçar reflow nem mover nós entre grupos!
+    if (isInitialLoad) {
+        return;
+    }
+
+    if (centralCollapseOrSizeChanged) {
         tidyGroupCentralNodes(g, gr, centralNodes, { isLiveReflow: true });
     } else {
         layoutDockedNodes(g, gr, { centralNodes, shrinkHeightToFit: true, isLiveReflow: true });
     }
 
-    // Atualiza a assinatura pós-layout para evitar loop
-    let postSig = `${g.leftRailOpen}:${g.rightRailOpen}|`;
-    for (const n of getNodes) {
-        postSig += `G${n.id}:${n.flags?.collapsed ? 1 : 0}:${Math.round(n.size?.[0] || 0)}:${Math.round(n.size?.[1] || 0)}:${n.title || ""}:${n.widgets?.[0]?.value || ""};`;
-    }
-    for (const n of setNodes) {
-        postSig += `S${n.id}:${n.flags?.collapsed ? 1 : 0}:${Math.round(n.size?.[0] || 0)}:${Math.round(n.size?.[1] || 0)}:${n.title || ""}:${n.widgets?.[0]?.value || ""};`;
-    }
-    for (const cn of centralNodes) {
-        const cFlag = cn.flags?.collapsed ? 1 : 0;
-        const cW = Math.round(cn.size?.[0] || 140);
-        const cH = cFlag ? 0 : Math.round(cn.size?.[1] || 30);
-        cn._evmPrevCollapsed = cFlag;
-        cn._evmPrevW = cW;
-        cn._evmPrevBodyH = cH;
-        postSig += `C${cn.id}:${cFlag}:${cW}:${cH};`;
-    }
-    g._lastLayoutSig = postSig;
+    syncGroupLayoutSignature(g, gr, centralNodes);
 }
 
 /**
@@ -1648,20 +1696,38 @@ function containedNodes(g) {
     const graph = curGraph();
     if (!graph) return [];
     ensureDockArrays(g);
-    const dockedSet = new Set([
+    const allGroups = ensureEvmGroups(graph);
+    const validGroupIds = new Set(allGroups.filter(Boolean).map(og => og.id));
+    const ownDockedSet = new Set([
         ...g.getNodeIds.map(String),
         ...g.setNodeIds.map(String)
     ]);
+    const otherDockedSet = new Set();
+    for (const og of allGroups) {
+        if (!og || og === g) continue;
+        ensureDockArrays(og);
+        for (const id of og.getNodeIds) otherDockedSet.add(String(id));
+        for (const id of og.setNodeIds) otherDockedSet.add(String(id));
+    }
     const out = [];
     for (const n of (graph._nodes || [])) {
         if (!n || !n.pos) continue;
-        if (dockedSet.has(String(n.id))) {
+        const sid = String(n.id);
+        if (ownDockedSet.has(sid)) {
             out.push(n);
+            continue;
+        }
+        if (otherDockedSet.has(sid)) continue;
+        if (n._evmLastGroupId && validGroupIds.has(n._evmLastGroupId)) {
+            if (n._evmLastGroupId === g.id) {
+                out.push(n);
+            }
             continue;
         }
         const b = nodeVisualBounds(n);
         const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
         if (cx >= g.x && cx <= g.x + g.w && cy >= g.y && cy <= g.y + g.h) {
+            n._evmLastGroupId = g.id;
             out.push(n);
         }
     }
@@ -3103,9 +3169,17 @@ function onGlobalPointerUp(e) {
             if (!n || !n.pos || n.type === "GetNode" || n.type === "SetNode") continue;
             const b = nodeVisualBounds(n);
             const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+            const prevGId = n._evmLastGroupId;
             const targetG = evmGroupAt([cx, cy]);
             if (targetG && !targetG.folded) {
+                n._evmLastGroupId = targetG.id;
                 groupsToRefresh.add(targetG);
+            } else if (!targetG) {
+                delete n._evmLastGroupId;
+            }
+            if (prevGId && (!targetG || prevGId !== targetG.id)) {
+                const prevG = gs.find(og => og && og.id === prevGId);
+                if (prevG && !prevG.folded) groupsToRefresh.add(prevG);
             }
         }
         for (const tg of groupsToRefresh) {
@@ -3291,6 +3365,7 @@ function installNodeCollapseAndResizeHooks() {
         const res = origCollapse.apply(this, arguments);
         try {
             const graph = this.graph || curGraph();
+            if (isGraphConfiguring(graph)) return res;
             const owner = findOwnerGroupForDockedNode(this);
             if (owner && owner.group) {
                 layoutDockedNodes(owner.group, graph, { shrinkHeightToFit: true });
@@ -3316,6 +3391,7 @@ function installNodeCollapseAndResizeHooks() {
         const res = origOnResize ? origOnResize.apply(this, arguments) : undefined;
         try {
             const graph = this.graph || curGraph();
+            if (isGraphConfiguring(graph)) return res;
             for (const g of ensureEvmGroups(graph)) {
                 if (!g.folded) {
                     checkAndReflowGroupIfNeeded(g, graph);
@@ -3343,6 +3419,8 @@ function installSetNodeConnectionHook() {
     SetNodeClass.prototype.onConnectionsChange = function (slotType, slot, isChangeConnect, link_info) {
         const res = origOnConn?.apply(this, arguments);
         try {
+            const graph = this.graph || curGraph();
+            if (isGraphConfiguring(graph)) return res;
             const owner = findOwnerGroupForDockedNode(this);
             if (!app.configuringGraph && isChangeConnect && slotType === window.LiteGraph.INPUT) {
                 if (owner && owner.side === "right") {
@@ -3354,7 +3432,7 @@ function installSetNodeConnectionHook() {
                 syncWidgetValue(this, 0, this.widgets[0].name || "Constant", this.widgets[0].value);
             }
             if (owner && owner.group) {
-                layoutDockedNodes(owner.group, this.graph || curGraph(), { shrinkHeightToFit: true });
+                layoutDockedNodes(owner.group, graph, { shrinkHeightToFit: true });
             }
         } catch (_e) {}
         return res;
@@ -3365,6 +3443,8 @@ function installSetNodeConnectionHook() {
         GetNodeClass.prototype.onRename = function () {
             const r = origOnRename?.apply(this, arguments);
             try {
+                const graph = this.graph || curGraph();
+                if (isGraphConfiguring(graph)) return r;
                 if (this.widgets?.[0]) {
                     syncWidgetValue(this, 0, this.widgets[0].name || "Constant", this.widgets[0].value);
                 }
@@ -3375,7 +3455,7 @@ function installSetNodeConnectionHook() {
                 }
                 const owner = findOwnerGroupForDockedNode(this);
                 if (owner && owner.group) {
-                    layoutDockedNodes(owner.group, this.graph || curGraph(), { shrinkHeightToFit: true });
+                    layoutDockedNodes(owner.group, graph, { shrinkHeightToFit: true });
                 }
             } catch (_e) {}
             return r;
@@ -3387,8 +3467,7 @@ function installSetNodeConnectionHook() {
 }
 
 // ── Persistência no Workflow (graph.extra.evmGroups) ────────────────────────
-function installPersistence() {
-    const G = app.graph?.constructor?.prototype || window.LGraph?.prototype;
+function wrapGraphPersistenceOnProto(G) {
     if (!G || G._evmGroupPersistWrapped) return;
 
     const origSerialize = G.serialize;
@@ -3410,23 +3489,46 @@ function installPersistence() {
 
     const origConfigure = G.configure;
     G.configure = function (data) {
-        const r = origConfigure.apply(this, arguments);
+        const savedGroups = Array.isArray(data?.extra?.evmGroups)
+            ? JSON.parse(JSON.stringify(data.extra.evmGroups))
+            : [];
+        _evmConfiguring = true;
+        this._evmConfiguring = true;
+        let r;
         try {
+            r = origConfigure.apply(this, arguments);
             if (!this.extra) this.extra = {};
-            const arr = data?.extra?.evmGroups;
-            this.extra.evmGroups = Array.isArray(arr) ? arr.map(x => ({ ...x })) : [];
+            this.extra.evmGroups = savedGroups;
+            for (const g of this.extra.evmGroups) {
+                migrateLegacyColorsIfNeeded(g);
+                ensureDockArrays(g);
+            }
+            for (const n of (this._nodes || [])) {
+                if (n) delete n._evmLastGroupId;
+            }
+            for (const g of this.extra.evmGroups) {
+                const cNodes = getCentralMemberNodes(g, this);
+                syncGroupLayoutSignature(g, this, cNodes);
+            }
             if (this === curGraph()) {
-                for (const g of this.extra.evmGroups) {
-                    migrateLegacyColorsIfNeeded(g);
-                    layoutDockedNodes(g, this);
-                }
                 invalidateHidden();
                 updateHideCSS();
             }
-        } catch (_e) {}
+        } catch (_e) {
+        } finally {
+            this._evmConfiguring = false;
+            _evmConfiguring = false;
+        }
         return r;
     };
     G._evmGroupPersistWrapped = true;
+}
+
+function installPersistence() {
+    wrapGraphPersistenceOnProto(app.graph?.constructor?.prototype);
+    wrapGraphPersistenceOnProto(window.LGraph?.prototype);
+    const cg = curGraph();
+    if (cg) wrapGraphPersistenceOnProto(cg.constructor?.prototype);
 }
 
 function installExecListeners() {
@@ -4574,6 +4676,31 @@ app.registerExtension({
         return items;
     },
 
+    beforeConfigureGraph() {
+        _evmConfiguring = true;
+        installPersistence();
+    },
+
+    afterConfigureGraph() {
+        _evmConfiguring = false;
+        const gr = curGraph();
+        if (gr) {
+            gr._evmConfiguring = false;
+            const groups = ensureEvmGroups(gr);
+            for (const n of (gr._nodes || [])) {
+                if (n) delete n._evmLastGroupId;
+            }
+            for (const g of groups) {
+                migrateLegacyColorsIfNeeded(g);
+                ensureDockArrays(g);
+                const cNodes = getCentralMemberNodes(g, gr);
+                syncGroupLayoutSignature(g, gr, cNodes);
+            }
+            invalidateHidden();
+            updateHideCSS();
+        }
+    },
+
     setup() {
         installDrawHook();
         installPersistence();
@@ -4586,6 +4713,7 @@ app.registerExtension({
         setInterval(() => {
             try {
                 installDrawHook();
+                installPersistence();
                 installNodeCollapseAndResizeHooks();
                 installSetNodeConnectionHook();
                 updateHideCSS();
