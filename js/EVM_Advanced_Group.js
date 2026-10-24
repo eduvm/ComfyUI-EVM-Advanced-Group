@@ -3631,6 +3631,2530 @@ function toast(summary, detail) {
     } catch (_e) {}
 }
 
+// ── Organizador Nativo 100% JavaScript (Padrão Dj Edu — Zero Dependência Externa) ──
+const _organizeUndoStack = [];
+let _organizeBusy = false;
+
+const WF_STAGES = [
+    "NOTES",
+    "MODELS",
+    "INPUT",
+    "PROMPT",
+    "PROMPT_EXPANSION",
+    "SETTINGS",
+    "CONDITION",
+    "SAMPLING",
+    "REFINE",
+    "UPSCALE",
+    "OUTPUT",
+];
+const WF_AUX = "AUX";
+const WF_OTHER = "OTHER";
+
+const WF_PALETTE = {
+    NOTES:            { group: "#000000", node: "#222222", bg: "#000000" },
+    MODELS:           { group: "#613583", node: "#481c6a", bg: "#613583" },
+    INPUT:            { group: "#8888aa", node: "#223",    bg: "#335" },
+    PROMPT:           { group: "#2b652b", node: "#124c12", bg: "#2b652b" },
+    PROMPT_EXPANSION: { group: "#189164", node: "#189164", bg: "#22342e" },
+    SETTINGS:         { group: "#3f789e", node: "#1b4669", bg: "#29699c" },
+    CONDITION:        { group: "#cfa62a", node: "#cfa62a", bg: "#3e3825" },
+    SAMPLING:         { group: "#3c3c83", node: "#23236a", bg: "#3c3c83" },
+    REFINE:           { group: "#248382", node: "#0b6a69", bg: "#248382" },
+    UPSCALE:          { group: "#246283", node: "#0b496a", bg: "#246283" },
+    OUTPUT:           { group: "#631e1e", node: "#4a0505", bg: "#631e1e" },
+    AUX:              { group: "#444444", node: null,      bg: null },
+    OTHER:            { group: "#3f789e", node: "#1b4669", bg: "#29699c" },
+};
+const WF_AUDIO_GROUP_COLOR = "#ffffff";
+
+const WF_ADOPT_TITLES = {
+    NOTES: "Notes",
+    MODELS: "Models",
+    INPUT: "Input",
+    PROMPT: "Prompt",
+    PROMPT_EXPANSION: "Prompt Expansion",
+    SETTINGS: "Size - Seed - Steps",
+    CONDITION: "Condition",
+    SAMPLING: "Sampling",
+    REFINE: "Refine",
+    UPSCALE: "Upscale",
+    OUTPUT: "Output",
+    OTHER: "Outros",
+};
+
+const WF_GROUP_RULES = [
+    ["NOTES",            /\bnotas?\b|\bnotes?\b|markdown\s*notes?|note\s*plus|pixaroma\s*note|\binfo(rma[çc][õo]es)?\b|instru[çc][õo]es|instructions?|readme|how\s*to(\s*use)?|como\s*usar|documenta[çc][ãa]o|documentation/i],
+    ["UPSCALE",          /upscal|seedvr|interpolat|latent upscale/i],
+    ["OUTPUT",           /output|save|export|render|combine|merge|composite|montagem|aplica|t[ií]tulo|\bnome\b|logo|stitch|overlay|watermark|\bcta\b/i],
+    ["PROMPT_EXPANSION", /prompt expansion|expans[ãa]o de prompt/i],
+    ["PROMPT",           /^\s*(\d+[\.\-\s]*)?prompt\b|prompt\s*\(|prompt generation|text encode/i],
+    ["CONDITION",        /condition\b|conditioning/i],
+    ["REFINE",           /detailer|refine|\bface\b|hand|mouth|\beye|foot|fidelity|\bnag\b|remove background|background/i],
+    ["SAMPLING",         /sampl|decod|guider|noise|scheduler|sigmas|latent|generate|first pass|second pass|\bpass\b|1st pass|2nd pass/i],
+    ["MODELS",           /model|loader|load models?|lora|\bclip\b|\bvae\b|checkpoint|unet|attention|patch|gguf|\bdit\b|zimage|krea|qwen image|load early/i],
+    ["PROMPT",           /prompt|instruction|enhanc|style|lyrics|texto|\btext\b/i],
+    ["SETTINGS",         /\bsizes?\b|resolution|\bseed\b|steps|length|lenght|setting|options|aspect|empty latent|frames|dura[çc][ãa]o/i],
+    ["INPUT",            /input|reference|\bref\b|imagem|image|carrega|frames|audio|voice|voz|music|custom audio|guides|controlnet|personagem|g[eê]nero|thumbnail|capa|foto/i],
+    ["AUX",              /fast groups|bypass|clear (mem|ram)|memory|performance|timer|compare|settings? da|seletor geral|number conversion|utility|debug|\bstats\b/i],
+];
+
+const WF_NODE_RULES = [
+    ["NOTES",    /^(Note|MarkdownNote|Note Plus \(mtb\)|PixaromaNote|NoteNode)$|Markdown\s*Note/i],
+    ["UPSCALE",  /SeedVR2|Upscal|RTXVideoSuperResolution|LatentUpscal/i],
+    ["MODELS",   /Loader|Lora|Attention|ModelSampling|CFGNorm|ModelPatch|CheckpointLoader|Power Lora/i],
+    ["REFINE",   /Detailer|H3Face|H3PerFrame|SAMLoader|UltralyticsDetector/i],
+    ["PROMPT",   /CLIPTextEncode|TextEncode|TextGenerate|FluxGuidance|ConditioningZeroOut|ConditioningCombine|ConditioningSet|StringConcatenate|ttN text|ShowText|TextPreview|PrimitiveString/i],
+    ["SETTINGS", /Resolution|Aspect|Output Options|Empty.*Latent|RandomNoise|Scheduler|Sigmas|INTConstant|PrimitiveInt|PrimitiveFloat|PrimitiveBoolean|ttN seed|Calculator|ComfyMathExpression|GetImageSize/i],
+    ["SAMPLING", /KSampler|Sampler|Guider|VAEDecode|VAEEncode|SeparateAVLatent|ConcatAVLatent|ImgToVideoInplace|ImageToVideo|ReferenceToVideo|GenerateMusic|GenerateABC|AudioVAE/i],
+    ["OUTPUT",   /Save|Preview|Image Save|FlowSave|Comparer|Compos|Overlay Text|ConcatMulti|MaskPreview|CreateVideo|VideoCombine/i],
+    ["INPUT",    /LoadImage|LoadAudio|LoadVideo|LoadVideoUpload|ImageScale|ResizeImage|ResizeImages|ReferenceLatent|CropGuides|SetLatentNoiseMask|ImageStitch|SolidMask|TrimAudio|Voice|TTS|VibeVoice|GetVideoComponents/i],
+];
+
+const WF_HELPER_TYPES = new Set([
+    "Fast Groups Bypasser (rgthree)",
+    "Reroute",
+    "Reroute (rgthree)",
+    "Label (rgthree)",
+    "PrimitiveNode",
+    "Anything Everywhere",
+    "PixaromaMonitor",
+    "PixaromaRunTimer",
+]);
+
+const WF_MODEL_LOADER_TYPES = new Set([
+    "VAELoader", "VAELoaderKJ", "CLIPLoader", "CLIPLoaderGGUF", "UNETLoader",
+    "UnetLoaderGGUF", "DualCLIPLoader", "DualCLIPLoaderGGUF",
+    "CheckpointLoaderSimple", "LoraLoaderModelOnly", "LoraLoaderAdvanced",
+    "NunchakuQwenImageDiTLoader", "NunchakuFluxDiTLoader", "NunchakuZImageDiTLoader",
+    "DiffusionModelLoaderKJ", "Qwen3Loader", "AudioEncoderLoader",
+    "UpscaleModelLoader", "ControlNetLoader", "MelBandRoFormerModelLoader",
+    "ModelAttentionBackend", "PathchSageAttentionKJ", "SpectrumApplyMiniMaxH3",
+]);
+
+const WF_PREVIEW_OR_MULTILINE_TYPES = new Set([
+    "LoadImage", "LoadImageMask", "SaveImage", "PreviewImage", "SaveVideo",
+    "VHS_VideoCombine", "VHS_LoadVideo", "VHS_LoadVideoPath", "VHS_LoadAudioUpload",
+    "VHS_LoadAudio", "LoadAudio", "PreviewAudio", "SaveAudio",
+    "Image Comparer (rgthree)", "PrimitiveStringMultiline",
+    "CLIPTextEncode", "CLIPTextEncodeFlux", "CLIPTextEncodeSDXL",
+    "Note", "MarkdownNote", "Note Plus (mtb)", "PixaromaNote", "MiniMaxH3ReferenceToVideo",
+]);
+
+const WF_PASSTHROUGH_CLEAN_TYPES = new Set([
+    "UnloadAllModels",
+    "easy cleanGpuUsed",
+    "VRAM_Debug",
+    "FreeU",
+]);
+
+function wfStageFromText(text) {
+    if (!text) return WF_OTHER;
+    const s = String(text);
+    for (const [name, rx] of WF_GROUP_RULES) {
+        if (rx.test(s)) return name;
+    }
+    return WF_OTHER;
+}
+
+function wfStageFromNodeType(nodeType) {
+    if (!nodeType) return WF_OTHER;
+    const t = String(nodeType);
+    if (WF_HELPER_TYPES.has(t)) return WF_AUX;
+    if (WF_MODEL_LOADER_TYPES.has(t)) return "MODELS";
+    for (const [name, rx] of WF_NODE_RULES) {
+        if (rx.test(t)) return name;
+    }
+    return WF_OTHER;
+}
+
+function wfStageFromNode(node) {
+    if (!node || typeof node !== "object") return WF_OTHER;
+    const st = wfStageFromNodeType(node.type);
+    if (st !== WF_OTHER) return st;
+    if (node.title) {
+        const stTitle = wfStageFromText(node.title);
+        if (stTitle !== WF_OTHER) return stTitle;
+    }
+    return WF_OTHER;
+}
+
+function wfNodeSize(node) {
+    const sz = node?.size;
+    if (Array.isArray(sz) && sz.length >= 2) {
+        return [Number(sz[0]) || 210, Number(sz[1]) || 60];
+    }
+    if (sz && typeof sz === "object") {
+        return [Number(sz["0"] ?? sz.width ?? 210), Number(sz["1"] ?? sz.height ?? 60)];
+    }
+    return [210, 60];
+}
+
+function wfIsCollapsed(node) {
+    return Boolean(node?.flags?.collapsed);
+}
+
+function wfNodeBox(node) {
+    const pos = node?.pos || [0, 0];
+    const [w, h] = wfNodeSize(node);
+    return [Number(pos[0]) || 0, Number(pos[1]) || 0, w, wfIsCollapsed(node) ? 0 : h];
+}
+
+function wfGetSetKey(node) {
+    if (!node || (node.type !== "SetNode" && node.type !== "GetNode")) return "";
+    const wvn = node.widgets_values_named;
+    if (wvn && typeof wvn === "object" && wvn.Constant) return String(wvn.Constant);
+    const wv = node.widgets_values;
+    if (Array.isArray(wv) && wv.length && wv[0]) return String(wv[0]);
+    if (wv && typeof wv === "object") {
+        const firstVal = Object.values(wv)[0];
+        if (firstVal) return String(firstVal);
+    }
+    return "";
+}
+
+function measureTextWidth(text, font = "bold 14px Arial, sans-serif") {
+    try {
+        const ctx = getMeasCtx();
+        if (ctx) {
+            ctx.font = font;
+            return ctx.measureText(String(text || "")).width;
+        }
+    } catch (_e) {}
+    return String(text || "").length * 8.5;
+}
+
+function wfDockedNodeExpandedWidth(node) {
+    const title = String(node?.title || node?.type || "");
+    const titleW = Math.max(
+        measureTextWidth(title, "600 14px Inter, Arial, sans-serif"),
+        measureTextWidth(title, "bold 14px Arial, sans-serif")
+    );
+    const titleReq = Math.ceil(titleW + NODE_TITLE_H * 2 + 12);
+    const wval = wfGetSetKey(node);
+    const nameW = measureTextWidth("Constant", "14px Arial, sans-serif");
+    const valW = measureTextWidth(wval, "14px Arial, sans-serif");
+    const widgetReq = Math.ceil(nameW + valW + 76);
+    const compW = Math.max(210, titleW + 40);
+    return snapUp(Math.max(MIN_RAIL_INNER_W, titleReq, widgetReq, compW));
+}
+
+function wfDockedNodeWidth(node) {
+    const title = String(node?.title || node?.type || "");
+    if (wfIsCollapsed(node)) {
+        const collapsedReq = Math.ceil(measureTextWidth(title, "bold 14px Arial, sans-serif") + NODE_TITLE_H * 2);
+        return snapUp(Math.max(MIN_RAIL_INNER_W, collapsedReq));
+    }
+    const [w] = wfNodeSize(node);
+    const expReq = wfDockedNodeExpandedWidth(node);
+    return snapUp(Math.max(MIN_RAIL_INNER_W, w, expReq));
+}
+
+function wfComputeMinNodeHeight(node) {
+    const ntype = String(node?.type || "");
+    if (ntype === "SetNode" || ntype === "GetNode") return 60;
+    const [, curH] = wfNodeSize(node);
+    if (ntype === "LoadImage") {
+        return curH >= 300 ? 340 : snapUp(curH);
+    }
+    if (WF_PREVIEW_OR_MULTILINE_TYPES.has(ntype) || ntype.includes("Preview") || ntype.includes("Multiline")) {
+        return snapUp(curH);
+    }
+    const inputs = Array.isArray(node?.inputs) ? node.inputs : [];
+    const outputs = Array.isArray(node?.outputs) ? node.outputs : [];
+    const nonWidgetInputs = inputs.filter(inp => !inp || typeof inp !== "object" || !("widget" in inp)).length;
+    const widgetInputs = inputs.filter(inp => inp && typeof inp === "object" && "widget" in inp).length;
+    const slotRows = Math.max(nonWidgetInputs, outputs.length, 1);
+
+    const wv = node?.widgets_values;
+    let numWidgets = 0;
+    if (Array.isArray(wv)) {
+        numWidgets = wv.length;
+    } else if (wv && typeof wv === "object") {
+        numWidgets = Object.keys(wv).filter(k => k !== "videopreview").length;
+    }
+    numWidgets = Math.max(numWidgets, widgetInputs);
+    const widgetsH = numWidgets > 0 ? (numWidgets * 24 + 8) : 0;
+    const rawH = slotRows * 20 + widgetsH + 6;
+    return snapUp(Math.max(30, rawH));
+}
+
+function wfIsEvmGroup(g) {
+    if (!g || typeof g !== "object") return false;
+    return (
+        "leftRailW" in g ||
+        "rightRailW" in g ||
+        "getNodeIds" in g ||
+        "setNodeIds" in g ||
+        String(g.id || "").startsWith("evmg_")
+    );
+}
+
+function wfGroupBox(g) {
+    if (Array.isArray(g?.bounding) && g.bounding.length >= 4) {
+        return [Number(g.bounding[0]) || 0, Number(g.bounding[1]) || 0, Number(g.bounding[2]) || 0, Number(g.bounding[3]) || 0];
+    }
+    return [Number(g?.x) || 0, Number(g?.y) || 0, Number(g?.w) || 0, Number(g?.h) || 0];
+}
+
+function wfHasAudioHint(group, nodes) {
+    const text = String(group?.title || "").toLowerCase();
+    if (/audio|voz|voice|music|som|trilha|tts|lyrics|logo|capa|thumbnail|fundo|marca|asset/.test(text)) {
+        return true;
+    }
+    const markers = ["Audio", "Voz", "Voice", "TTS", "Music"];
+    return (nodes || []).some(n => markers.some(m => String(n?.type || "").includes(m)));
+}
+
+function wfGroupColorFor(stage, group, nodes) {
+    if (stage === "INPUT" && wfHasAudioHint(group, nodes)) {
+        return WF_AUDIO_GROUP_COLOR;
+    }
+    const raw = (WF_PALETTE[stage] || WF_PALETTE.OTHER).group || "#3f789e";
+    return normalizeHex(raw, "#3f789e");
+}
+
+function wfGetGroups(data) {
+    if (data?.extra && typeof data.extra === "object") {
+        if (Array.isArray(data.extra.evmGroups) && data.extra.evmGroups.length) return data.extra.evmGroups;
+        if (Array.isArray(data.extra.pixaromaGroups) && data.extra.pixaromaGroups.length) return data.extra.pixaromaGroups;
+    }
+    if (Array.isArray(data?.groups) && data.groups.length) return data.groups;
+    if (!data.extra || typeof data.extra !== "object") data.extra = {};
+    if (!Array.isArray(data.extra.evmGroups)) data.extra.evmGroups = [];
+    return data.extra.evmGroups;
+}
+
+function wfContainsPoint(box, x, y) {
+    const [bx, by, bw, bh] = box;
+    return bx <= x && x <= bx + bw && by <= y && y <= by + bh;
+}
+
+function wfMembersOf(data, group) {
+    const box = wfGroupBox(group);
+    const gStage = wfStageFromText(group?.title);
+    const dockedIds = new Set();
+    const allDockedElsewhere = new Set();
+
+    for (const nid of (group?.getNodeIds || [])) dockedIds.add(String(nid));
+    for (const nid of (group?.setNodeIds || [])) dockedIds.add(String(nid));
+
+    for (const gOther of wfGetGroups(data)) {
+        if (gOther === group) continue;
+        for (const nid of (gOther?.getNodeIds || [])) allDockedElsewhere.add(String(nid));
+        for (const nid of (gOther?.setNodeIds || [])) allDockedElsewhere.add(String(nid));
+    }
+
+    const byId = new Map((data.nodes || []).map(n => [Number(n.id), n]));
+    const revAdj = new Map();
+    for (const lk of (data.links || [])) {
+        if (Array.isArray(lk) && lk.length >= 4) {
+            const src = Number(lk[1]);
+            const dst = Number(lk[3]);
+            if (!revAdj.has(dst)) revAdj.set(dst, []);
+            revAdj.get(dst).push(src);
+        }
+    }
+
+    const isExternalStageNode = (node, visited = new Set()) => {
+        const nid = Number(node?.id);
+        if (visited.has(nid)) return false;
+        visited.add(nid);
+        const ntStage = wfStageFromNodeType(node?.type);
+        const ttStage = wfStageFromText(node?.title);
+        if (
+            ntStage === WF_OTHER &&
+            ttStage !== WF_OTHER &&
+            ttStage !== WF_AUX &&
+            ttStage !== gStage &&
+            /face refine|face detailer/i.test(String(node?.title || ""))
+        ) {
+            return true;
+        }
+        if (WF_PASSTHROUGH_CLEAN_TYPES.has(String(node?.type))) {
+            for (const upId of (revAdj.get(nid) || [])) {
+                const upN = byId.get(upId);
+                if (upN && isExternalStageNode(upN, visited)) return true;
+            }
+        }
+        return false;
+    };
+
+    const out = [];
+    for (const n of (data.nodes || [])) {
+        const nidStr = String(n.id);
+        if (dockedIds.has(nidStr)) {
+            out.push(n);
+            continue;
+        }
+        if (allDockedElsewhere.has(nidStr)) continue;
+        const pos = n.pos || [0, 0];
+        if (wfContainsPoint(box, Number(pos[0]) || 0, Number(pos[1]) || 0)) {
+            if (isExternalStageNode(n)) continue;
+            out.push(n);
+        }
+    }
+    return out;
+}
+
+function wfClassifyGroup(data, group) {
+    const members = wfMembersOf(data, group);
+    const byTitle = wfStageFromText(group?.title);
+
+    if (members.length) {
+        const central = members.filter(n => n.type !== "GetNode" && n.type !== "SetNode");
+        const pool = central.length ? central : members;
+        const loaderCount = pool.filter(n => wfStageFromNodeType(n.type) === "MODELS").length;
+        if (
+            loaderCount / pool.length >= 0.7 &&
+            [WF_OTHER, "MODELS", "SAMPLING", "PROMPT", "SETTINGS", "REFINE"].includes(byTitle)
+        ) {
+            return "MODELS";
+        }
+        if (
+            byTitle === "MODELS" &&
+            pool.every(n => ["INPUT", "OUTPUT", WF_AUX].includes(wfStageFromNodeType(n.type)))
+        ) {
+            return "INPUT";
+        }
+    }
+    if (byTitle !== WF_OTHER) return byTitle;
+
+    const votes = new Map();
+    for (const n of members) {
+        const st = wfStageFromNodeType(n.type);
+        if (st !== WF_OTHER && st !== WF_AUX) {
+            votes.set(st, (votes.get(st) || 0) + 1);
+        }
+    }
+    let bestStage = WF_OTHER;
+    let bestCount = 0;
+    for (const [st, cnt] of votes.entries()) {
+        if (cnt > bestCount) {
+            bestCount = cnt;
+            bestStage = st;
+        }
+    }
+    return bestStage;
+}
+
+function wfConvertGroupToEvm(group, stage = WF_OTHER, index = 1, nodes = []) {
+    const [x, y, w, h] = wfGroupBox(group);
+    const rawColor = wfGroupColorFor(stage, group, nodes);
+    const color = normalizeHex(rawColor || group?.color || group?.titleColor || "#3f789e");
+    const gid = group?.id;
+    const evmId = (typeof gid === "string" && gid.startsWith("evmg_"))
+        ? gid
+        : `evmg_${stage.toLowerCase()}_${index}`;
+
+    const getIds = (group?.getNodeIds || []).map(nid => (/^\d+$/.test(String(nid)) ? Number(nid) : nid));
+    const setIds = (group?.setNodeIds || []).map(nid => (/^\d+$/.test(String(nid)) ? Number(nid) : nid));
+    const leftOpen = getIds.length ? true : Boolean(group?.leftRailOpen ?? true);
+    const rightOpen = setIds.length ? true : Boolean(group?.rightRailOpen ?? true);
+    const leftW = snapUp(Math.max(DEFAULT_RAIL_W, Number(group?.leftRailW) || DEFAULT_RAIL_W));
+    const rightW = snapUp(Math.max(DEFAULT_RAIL_W, Number(group?.rightRailW) || DEFAULT_RAIL_W));
+
+    const evmGroup = {
+        id: evmId,
+        title: group?.title || "",
+        x: snap(x),
+        y: snap(y),
+        w: snapUp(w),
+        h: snapUp(h),
+        leftRailOpen: leftOpen,
+        rightRailOpen: rightOpen,
+        leftRailW: leftW,
+        rightRailW: rightW,
+        color,
+        titleColor: color,
+        bodyColor: color,
+        fontSize: (group?.fontSize === 14 || group?.fontSize === 16) ? Number(group.fontSize) : DEF_FONT_SIZE,
+        getNodeIds: getIds,
+        setNodeIds: setIds,
+        _colorMigratedV2: true,
+    };
+    for (const k of ["folded", "showLinks", "hOpen", "wOpen", "foldNodes", "foldGroups", "pinned"]) {
+        if (group && k in group) evmGroup[k] = group[k];
+    }
+    return evmGroup;
+}
+
+function wfEnsureEvmGroups(data) {
+    if (!data.extra || typeof data.extra !== "object") data.extra = {};
+    if (!Array.isArray(data.extra.evmGroups)) data.extra.evmGroups = [];
+    const evmGroups = data.extra.evmGroups;
+    const coreGroups = Array.isArray(data.groups) ? data.groups : [];
+    const pixGroups = Array.isArray(data.extra.pixaromaGroups) ? data.extra.pixaromaGroups : [];
+
+    const existingTitles = new Set(evmGroups.map(g => g?.title).filter(Boolean));
+    const existingIds = new Set(evmGroups.map(g => g?.id).filter(Boolean));
+    let convertedCount = 0;
+
+    for (const srcList of [pixGroups, coreGroups]) {
+        for (const g of srcList) {
+            if (!g || typeof g !== "object") continue;
+            if (wfIsEvmGroup(g)) {
+                if (!existingIds.has(g.id) && !existingTitles.has(g.title)) {
+                    evmGroups.push(g);
+                    if (g.id) existingIds.add(g.id);
+                    if (g.title) existingTitles.add(g.title);
+                }
+                continue;
+            }
+            if (g.title && existingTitles.has(g.title)) continue;
+            const members = wfMembersOf(data, g);
+            const stage = wfClassifyGroup(data, g);
+            let idx = evmGroups.length + 1;
+            const evmG = wfConvertGroupToEvm(g, stage, idx, members);
+            while (existingIds.has(evmG.id)) {
+                idx += 1;
+                evmG.id = `evmg_${stage.toLowerCase()}_${idx}`;
+            }
+            evmGroups.push(evmG);
+            existingIds.add(evmG.id);
+            if (evmG.title) existingTitles.add(evmG.title);
+            convertedCount += 1;
+        }
+    }
+    data.groups = [];
+    delete data.extra.pixaromaGroups;
+    return convertedCount;
+}
+
+function wfSetGroups(data, groups) {
+    if (!data.extra || typeof data.extra !== "object") data.extra = {};
+    const evmGroups = [];
+    groups.forEach((g, i) => {
+        if (wfIsEvmGroup(g)) {
+            delete g.bounding;
+            delete g.flags;
+            delete g.titleAlpha;
+            delete g.bodyAlpha;
+            evmGroups.push(g);
+        } else {
+            const stage = wfClassifyGroup(data, g);
+            const members = wfMembersOf(data, g);
+            evmGroups.push(wfConvertGroupToEvm(g, stage, i + 1, members));
+        }
+    });
+    data.extra.evmGroups = evmGroups;
+    delete data.extra.pixaromaGroups;
+    data.groups = [];
+}
+
+function wfLinkAdjacency(data) {
+    const adjacency = new Map();
+    const addEdge = (u, v) => {
+        if (!adjacency.has(u)) adjacency.set(u, []);
+        adjacency.get(u).push(v);
+    };
+    for (const link of (data.links || [])) {
+        if (Array.isArray(link) && link.length >= 4) {
+            const u = Number(link[1]);
+            const v = Number(link[3]);
+            if (Number.isFinite(u) && Number.isFinite(v)) addEdge(u, v);
+        }
+    }
+    const setsByKey = new Map();
+    const getsByKey = new Map();
+    for (const n of (data.nodes || [])) {
+        const key = wfGetSetKey(n);
+        if (!key) continue;
+        if (n.type === "SetNode") {
+            if (!setsByKey.has(key)) setsByKey.set(key, []);
+            setsByKey.get(key).push(Number(n.id));
+        } else if (n.type === "GetNode") {
+            if (!getsByKey.has(key)) getsByKey.set(key, []);
+            getsByKey.get(key).push(Number(n.id));
+        }
+    }
+    for (const [key, sIds] of setsByKey.entries()) {
+        const gIds = getsByKey.get(key) || [];
+        for (const sId of sIds) {
+            for (const gId of gIds) addEdge(sId, gId);
+        }
+    }
+    return adjacency;
+}
+
+function wfBuildUndirectedAdjacency(data) {
+    const adj = new Map();
+    const addEdge = (u, v) => {
+        if (!adj.has(u)) adj.set(u, new Set());
+        if (!adj.has(v)) adj.set(v, new Set());
+        adj.get(u).add(v);
+        adj.get(v).add(u);
+    };
+    for (const link of (data.links || [])) {
+        if (Array.isArray(link) && link.length >= 4) {
+            const u = Number(link[1]);
+            const v = Number(link[3]);
+            if (Number.isFinite(u) && Number.isFinite(v)) addEdge(u, v);
+        }
+    }
+    const setsByKey = new Map();
+    const getsByKey = new Map();
+    for (const n of (data.nodes || [])) {
+        const key = wfGetSetKey(n);
+        if (!key) continue;
+        if (n.type === "SetNode") {
+            if (!setsByKey.has(key)) setsByKey.set(key, []);
+            setsByKey.get(key).push(Number(n.id));
+        } else if (n.type === "GetNode") {
+            if (!getsByKey.has(key)) getsByKey.set(key, []);
+            getsByKey.get(key).push(Number(n.id));
+        }
+    }
+    for (const [key, sIds] of setsByKey.entries()) {
+        const gIds = getsByKey.get(key) || [];
+        for (const sId of sIds) {
+            for (const gId of gIds) addEdge(sId, gId);
+        }
+    }
+    return adj;
+}
+
+function wfGroupGraph(data, groups, membersByGroup, groupByNode) {
+    const adjacency = wfLinkAdjacency(data);
+    const downstream = new Map();
+    const upstream = new Map();
+    for (const g of groups) {
+        downstream.set(g, new Set());
+        upstream.set(g, new Set());
+    }
+    for (const g of groups) {
+        const seen = new Set();
+        const stack = (membersByGroup.get(g) || []).map(n => Number(n.id));
+        while (stack.length) {
+            const cur = stack.pop();
+            for (const nb of (adjacency.get(cur) || [])) {
+                if (seen.has(nb)) continue;
+                seen.add(nb);
+                const owner = groupByNode.get(nb);
+                if (owner && owner !== g) {
+                    downstream.get(g).add(owner);
+                }
+                stack.push(nb);
+            }
+        }
+    }
+    for (const [g, targets] of downstream.entries()) {
+        for (const t of targets) {
+            if (!upstream.has(t)) upstream.set(t, new Set());
+            upstream.get(t).add(g);
+        }
+    }
+    return { downstream, upstream };
+}
+
+function wfStageMap(data, groups) {
+    const list = groups || wfGetGroups(data);
+    const result = new Map();
+    if (!list.length) return result;
+
+    const membersByGroup = new Map();
+    const groupByNode = new Map();
+    const base = new Map();
+    for (const g of list) {
+        const m = wfMembersOf(data, g);
+        membersByGroup.set(g, m);
+        for (const n of m) groupByNode.set(Number(n.id), g);
+        base.set(g, wfClassifyGroup(data, g));
+    }
+    const { downstream, upstream } = wfGroupGraph(data, list, membersByGroup, groupByNode);
+    for (const g of list) {
+        const b = base.get(g);
+        if (b !== WF_OTHER) {
+            result.set(g, b);
+            continue;
+        }
+        const votes = new Map();
+        for (const nb of (downstream.get(g) || [])) {
+            const st = base.get(nb);
+            if (st && st !== WF_OTHER && st !== WF_AUX) votes.set(st, (votes.get(st) || 0) + 1);
+        }
+        if (!votes.size) {
+            for (const nb of (upstream.get(g) || [])) {
+                const st = base.get(nb);
+                if (st && st !== WF_OTHER && st !== WF_AUX) votes.set(st, (votes.get(st) || 0) + 1);
+            }
+        }
+        let best = WF_OTHER;
+        let bestCnt = 0;
+        for (const [st, cnt] of votes.entries()) {
+            if (cnt > bestCnt) {
+                bestCnt = cnt;
+                best = st;
+            }
+        }
+        result.set(g, best);
+    }
+    return result;
+}
+
+function wfClassifyNodesByGraph(data) {
+    const nodes = data.nodes || [];
+    const byId = new Map(nodes.map(n => [Number(n.id), n]));
+    const adj = wfBuildUndirectedAdjacency(data);
+    const dirAdj = wfLinkAdjacency(data);
+    const stage = new Map();
+
+    for (const node of nodes) {
+        const nid = Number(node.id);
+        const ntype = String(node.type || "");
+        if (WF_HELPER_TYPES.has(ntype)) {
+            stage.set(nid, WF_AUX);
+            continue;
+        }
+        if (ntype === "CreateVideo") {
+            const visited = new Set();
+            const q = [...(dirAdj.get(nid) || [])];
+            let feedsUpscale = false;
+            while (q.length) {
+                const tid = q.shift();
+                if (visited.has(tid)) continue;
+                visited.add(tid);
+                const t = byId.get(tid);
+                if (!t) continue;
+                const tt = String(t.type || "");
+                if (tt === "SetNode" || tt === "GetNode") {
+                    q.push(...(dirAdj.get(tid) || []));
+                } else if (tt === "GetVideoComponents" || wfStageFromNodeType(tt) === "UPSCALE") {
+                    feedsUpscale = true;
+                    break;
+                }
+            }
+            if (feedsUpscale) {
+                stage.set(nid, "SAMPLING");
+                continue;
+            }
+        }
+        const nStage = wfStageFromNode(node);
+        if (nStage !== WF_OTHER && nStage !== WF_AUX) {
+            stage.set(nid, nStage);
+        }
+    }
+
+    const q1 = [...stage.entries()].filter(([, st]) => st !== WF_AUX).map(([nid]) => nid);
+    while (q1.length) {
+        const cur = q1.shift();
+        for (const nb of (dirAdj.get(cur) || [])) {
+            if (!stage.has(nb)) {
+                stage.set(nb, stage.get(cur));
+                q1.push(nb);
+            }
+        }
+    }
+    const q2 = [...stage.entries()].filter(([, st]) => st !== WF_AUX).map(([nid]) => nid);
+    while (q2.length) {
+        const cur = q2.shift();
+        for (const nb of (adj.get(cur) || [])) {
+            if (!stage.has(nb)) {
+                stage.set(nb, stage.get(cur));
+                q2.push(nb);
+            }
+        }
+    }
+    for (const node of nodes) {
+        const nid = Number(node.id);
+        if (!stage.has(nid)) stage.set(nid, wfStageFromNode(node));
+    }
+    return stage;
+}
+
+function wfOptionalSuffix(group) {
+    return /[-–—(]\s*(opt|opcional|optional)/i.test(String(group?.title || ""));
+}
+
+function wfMarkOptional(title) {
+    const t = String(title || "");
+    if (/[-–—(]\s*(opt|opcional|optional)/i.test(t)) return t;
+    return `${t} - OPT`;
+}
+
+function wfIsNoteNode(node) {
+    return wfStageFromNodeType(node?.type) === "NOTES";
+}
+
+function wfClusterNoteColumns(nodes) {
+    if (!nodes || !nodes.length) return [];
+    const ordered = [...nodes].sort((a, b) =>
+        (Number(a.pos?.[0]) || 0) - (Number(b.pos?.[0]) || 0) ||
+        (Number(a.pos?.[1]) || 0) - (Number(b.pos?.[1]) || 0) ||
+        (Number(a.id) || 0) - (Number(b.id) || 0)
+    );
+    if (ordered.length === 1) return [ordered];
+    const heights = ordered.map(n => wfIsCollapsed(n) ? 0 : wfComputeMinNodeHeight(n));
+    const totalSingleH = heights.reduce((acc, h) => acc + h, 0) + NODE_VGAP * (ordered.length - 1);
+    if (totalSingleH <= 1400) {
+        return [ordered];
+    }
+    const col0 = [];
+    const col1 = [];
+    let h0 = 0;
+    let h1 = 0;
+    for (let i = 0; i < ordered.length; i++) {
+        const n = ordered[i];
+        const nh = heights[i];
+        if (h0 <= h1) {
+            col0.push(n);
+            h0 += nh + (col0.length > 1 ? NODE_VGAP : 0);
+        } else {
+            col1.push(n);
+            h1 += nh + (col1.length > 1 ? NODE_VGAP : 0);
+        }
+    }
+    return col1.length ? [col0, col1] : [col0];
+}
+
+function wfClusterColumns(nodes, split = COL_THRESHOLD) {
+    if (!nodes || !nodes.length) return [];
+    if (nodes.every(n => wfIsNoteNode(n))) {
+        return wfClusterNoteColumns(nodes);
+    }
+    const ordered = [...nodes].sort((a, b) =>
+        (Number(a.pos?.[0]) || 0) - (Number(b.pos?.[0]) || 0) ||
+        (Number(a.pos?.[1]) || 0) - (Number(b.pos?.[1]) || 0) ||
+        (Number(a.id) || 0) - (Number(b.id) || 0)
+    );
+    const cols = [];
+    for (const node of ordered) {
+        const nx = Number(node.pos?.[0]) || 0;
+        let placed = false;
+        for (const col of cols) {
+            if (Math.abs(nx - (Number(col[0].pos?.[0]) || 0)) < split) {
+                col.push(node);
+                placed = true;
+                break;
+            }
+        }
+        if (!placed) cols.push([node]);
+    }
+    return cols;
+}
+
+function wfTidyGroup(data, group, origin = null, members = null) {
+    const groupMembers = members || wfMembersOf(data, group);
+    let [gx, gy] = wfGroupBox(group);
+    if (origin) {
+        gx = origin[0];
+        gy = origin[1];
+    }
+    gx = snap(gx);
+    gy = snap(gy);
+
+    const getNodes = groupMembers.filter(n => n.type === "GetNode");
+    const setNodes = groupMembers.filter(n => n.type === "SetNode");
+    const centralNodes = groupMembers.filter(n => n.type !== "GetNode" && n.type !== "SetNode");
+    const isNotesOnly = centralNodes.length > 0 && centralNodes.every(n => wfIsNoteNode(n));
+
+    const sortByPos = (a, b) =>
+        (Number(a.pos?.[1]) || 0) - (Number(b.pos?.[1]) || 0) ||
+        (Number(a.pos?.[0]) || 0) - (Number(b.pos?.[0]) || 0) ||
+        (Number(a.id) || 0) - (Number(b.id) || 0);
+
+    getNodes.sort(sortByPos);
+    setNodes.sort(sortByPos);
+
+    group.getNodeIds = getNodes.map(n => n.id);
+    group.setNodeIds = setNodes.map(n => n.id);
+
+    const leftOpen = getNodes.length ? true : (isNotesOnly ? false : (group.leftRailOpen !== false));
+    const rightOpen = setNodes.length ? true : (isNotesOnly ? false : (group.rightRailOpen !== false));
+    group.leftRailOpen = leftOpen;
+    group.rightRailOpen = rightOpen;
+
+    for (const n of getNodes) {
+        if (!n.flags || typeof n.flags !== "object") n.flags = { collapsed: true };
+        else n.flags.collapsed = true;
+    }
+    const widestGetExp = getNodes.length
+        ? Math.max(MIN_RAIL_INNER_W, ...getNodes.map(n => wfDockedNodeExpandedWidth(n)))
+        : MIN_RAIL_INNER_W;
+    for (const n of getNodes) n.size = [widestGetExp, 60];
+    const widestGet = getNodes.length
+        ? Math.max(MIN_RAIL_INNER_W, ...getNodes.map(n => wfDockedNodeWidth(n)))
+        : MIN_RAIL_INNER_W;
+    const leftRailWidth = snapUp(widestGet + 2 * PAD);
+    group.leftRailW = leftRailWidth;
+    const lOpenW = leftOpen ? leftRailWidth : 0;
+
+    const railStartY = gy + 120; // PAD_TOP_RAIL
+    const leftNodeX = gx + PAD;
+    let curGetY = railStartY;
+    for (const n of getNodes) {
+        const nh = 60;
+        const bodyH = wfIsCollapsed(n) ? 0 : nh;
+        n.pos = [snap(leftNodeX), snap(curGetY)];
+        n.size = [widestGetExp, nh];
+        curGetY += bodyH + NODE_VGAP;
+    }
+    const getBottom = (getNodes.length && leftOpen) ? (curGetY - NODE_VGAP) : (gy + MIN_GROUP_H - PAD);
+
+    const centerX0 = gx + lOpenW;
+    let centerW = MIN_CENTER_W;
+    let centralBottom = gy + MIN_GROUP_H - PAD;
+    if (centralNodes.length) {
+        const columns = wfClusterColumns(centralNodes);
+        let cursorX = centerX0 + PAD;
+        centralBottom = gy + 90; // PAD_TOP
+        for (const column of columns) {
+            column.sort((a, b) => (Number(a.pos?.[1]) || 0) - (Number(b.pos?.[1]) || 0) || (Number(a.id) || 0) - (Number(b.id) || 0));
+            let cursorY = gy + 90;
+            const widest = Math.max(MIN_CENTER_W, ...column.map(n => snapUp(wfNodeSize(n)[0])));
+            for (const node of column) {
+                const nh = wfComputeMinNodeHeight(node);
+                const bodyH = wfIsCollapsed(node) ? 0 : nh;
+                node.pos = [snap(cursorX), snap(cursorY)];
+                node.size = [widest, nh];
+                cursorY += bodyH + NODE_VGAP;
+            }
+            centralBottom = Math.max(centralBottom, cursorY - NODE_VGAP);
+            cursorX += widest + NODE_HGAP;
+        }
+        centerW = Math.max(MIN_CENTER_W, snapUp((cursorX - NODE_HGAP + PAD) - centerX0));
+    }
+
+    for (const n of setNodes) {
+        if (!n.flags || typeof n.flags !== "object") n.flags = { collapsed: true };
+        else n.flags.collapsed = true;
+    }
+    const widestSetExp = setNodes.length
+        ? Math.max(MIN_RAIL_INNER_W, ...setNodes.map(n => wfDockedNodeExpandedWidth(n)))
+        : MIN_RAIL_INNER_W;
+    for (const n of setNodes) n.size = [widestSetExp, 60];
+    const widestSet = setNodes.length
+        ? Math.max(MIN_RAIL_INNER_W, ...setNodes.map(n => wfDockedNodeWidth(n)))
+        : MIN_RAIL_INNER_W;
+    const rightRailWidth = snapUp(widestSet + 2 * PAD);
+    group.rightRailW = rightRailWidth;
+    const rOpenW = rightOpen ? rightRailWidth : 0;
+
+    const rightRailX0 = centerX0 + centerW;
+    const rightNodeX = rightRailX0 + PAD;
+    let curSetY = railStartY;
+    for (const n of setNodes) {
+        const nh = 60;
+        const bodyH = wfIsCollapsed(n) ? 0 : nh;
+        n.pos = [snap(rightNodeX), snap(curSetY)];
+        n.size = [widestSetExp, nh];
+        curSetY += bodyH + NODE_VGAP;
+    }
+    const setBottom = (setNodes.length && rightOpen) ? (curSetY - NODE_VGAP) : (gy + MIN_GROUP_H - PAD);
+
+    const width = snapUp(lOpenW + centerW + rOpenW);
+    const maxBottomY = Math.max(gy + MIN_GROUP_H - PAD, getBottom, setBottom, centralBottom);
+    const height = Math.max(MIN_GROUP_H, snapUp((maxBottomY + PAD) - gy));
+
+    group.x = snap(gx);
+    group.y = snap(gy);
+    group.w = width;
+    group.h = height;
+    delete group.bounding;
+    return [group.x, group.y, width, height];
+}
+
+function wfAdoptLooseNodes(data) {
+    const groups = wfGetGroups(data);
+    const membersByGroup = new Map(groups.map(g => [g, wfMembersOf(data, g)]));
+    const grouped = new Set();
+    const groupByNode = new Map();
+    for (const [g, list] of membersByGroup.entries()) {
+        for (const n of list) {
+            grouped.add(Number(n.id));
+            groupByNode.set(Number(n.id), g);
+        }
+    }
+    const stageOfGroup = wfStageMap(data, groups);
+    const stageOfNode = wfClassifyNodesByGraph(data);
+    const byId = new Map((data.nodes || []).map(n => [Number(n.id), n]));
+    const dirAdj = wfLinkAdjacency(data);
+    const revAdj = new Map();
+    for (const [src, dsts] of dirAdj.entries()) {
+        for (const dst of dsts) {
+            if (!revAdj.has(dst)) revAdj.set(dst, []);
+            revAdj.get(dst).push(src);
+        }
+    }
+
+    const buckets = new Map();
+    const absorbed = new Map();
+
+    const unassigned = (data.nodes || []).filter(n => {
+        const nid = Number(n.id);
+        const st = stageOfNode.get(nid) || WF_OTHER;
+        return !grouped.has(nid) && st !== WF_OTHER && st !== WF_AUX;
+    });
+
+    const absorbInto = (node, targetGroup) => {
+        const nid = Number(node.id);
+        const st = stageOfNode.get(nid) || WF_OTHER;
+        const gMembers = membersByGroup.get(targetGroup);
+        const upInGroup = (revAdj.get(nid) || []).filter(u => groupByNode.get(u) === targetGroup).map(u => byId.get(u)).filter(Boolean);
+        const downInGroup = (dirAdj.get(nid) || []).filter(d => groupByNode.get(d) === targetGroup).map(d => byId.get(d)).filter(Boolean);
+        const sameType = gMembers.filter(m => m.type === node.type);
+
+        if (upInGroup.length) {
+            const ref = upInGroup[0];
+            node.pos = [snap(ref.pos[0]), snap(ref.pos[1] + wfNodeSize(ref)[1] + 10)];
+        } else if (downInGroup.length) {
+            const ref = downInGroup[0];
+            node.pos = [snap(ref.pos[0]), snap(ref.pos[1] - wfNodeSize(node)[1] - 10)];
+        } else if (sameType.length) {
+            const ref = sameType.reduce((a, b) => (Number(a.pos[1]) > Number(b.pos[1]) ? a : b));
+            node.pos = [snap(ref.pos[0]), snap(ref.pos[1] + wfNodeSize(ref)[1] + 10)];
+        } else if (gMembers.length) {
+            const ref = gMembers.reduce((a, b) => (Number(a.pos[1]) > Number(b.pos[1]) ? a : b));
+            node.pos = [snap(ref.pos[0]), snap(ref.pos[1] + wfNodeSize(ref)[1] + 10)];
+        }
+
+        gMembers.push(node);
+        groupByNode.set(nid, targetGroup);
+        grouped.add(nid);
+        const label = targetGroup.title || st;
+        if (!absorbed.has(label)) absorbed.set(label, []);
+        absorbed.get(label).push(node);
+
+        const [gx, gy, gw, gh] = wfGroupBox(targetGroup);
+        const [nx, ny, nw, nh] = wfNodeBox(node);
+        const newX = Math.min(gx, nx - PAD);
+        const newY = Math.min(gy, ny - 90);
+        const newW = Math.max(gx + gw, nx + nw + PAD) - newX;
+        const newH = Math.max(gy + gh, ny + nh + PAD) - newY;
+        targetGroup.x = snap(newX);
+        targetGroup.y = snap(newY);
+        targetGroup.w = snapUp(newW);
+        targetGroup.h = snapUp(newH);
+        delete targetGroup.bounding;
+    };
+
+    const remaining = [];
+    for (const node of unassigned) {
+        const nid = Number(node.id);
+        const st = stageOfNode.get(nid) || WF_OTHER;
+        const sameStageGroups = groups.filter(g => stageOfGroup.get(g) === st);
+        if (!sameStageGroups.length) {
+            if (!buckets.has(st)) buckets.set(st, []);
+            buckets.get(st).push(node);
+            grouped.add(nid);
+        } else {
+            remaining.push(node);
+        }
+    }
+
+    const bucketOfNode = new Map();
+    for (const [st, nlist] of buckets.entries()) {
+        for (const n of nlist) bucketOfNode.set(Number(n.id), st);
+    }
+
+    const stillRemaining = [];
+    for (const node of remaining) {
+        const nid = Number(node.id);
+        const neighborIds = [...(revAdj.get(nid) || []), ...(dirAdj.get(nid) || [])];
+        const nbBuckets = new Set(neighborIds.filter(nb => bucketOfNode.has(nb)).map(nb => bucketOfNode.get(nb)));
+        const nbExisting = new Set(neighborIds.filter(nb => groupByNode.has(nb)).map(nb => groupByNode.get(nb)));
+        if (nbBuckets.size && !nbExisting.size) {
+            const targetSt = [...nbBuckets][0];
+            if (!buckets.has(targetSt)) buckets.set(targetSt, []);
+            buckets.get(targetSt).push(node);
+            bucketOfNode.set(nid, targetSt);
+            grouped.add(nid);
+            continue;
+        }
+        stillRemaining.push(node);
+    }
+
+    for (const node of stillRemaining) {
+        const nid = Number(node.id);
+        const st = stageOfNode.get(nid) || WF_OTHER;
+        let targetGroup = null;
+        const sameStageGroups = groups.filter(g => stageOfGroup.get(g) === st);
+        if (sameStageGroups.length) {
+            const neighborIds = [...(revAdj.get(nid) || []), ...(dirAdj.get(nid) || [])];
+            for (const nbId of neighborIds) {
+                const gCand = groupByNode.get(nbId);
+                if (gCand && stageOfGroup.get(gCand) === st) {
+                    targetGroup = gCand;
+                    break;
+                }
+            }
+            if (!targetGroup) {
+                for (const gCand of sameStageGroups) {
+                    if ((membersByGroup.get(gCand) || []).some(m => m.type === node.type)) {
+                        targetGroup = gCand;
+                        break;
+                    }
+                }
+            }
+        }
+        if (targetGroup) {
+            absorbInto(node, targetGroup);
+        } else {
+            if (!buckets.has(st)) buckets.set(st, []);
+            buckets.get(st).push(node);
+        }
+    }
+
+    const existingBoxes = groups.map(g => wfGroupBox(g));
+    let farX = 0;
+    let originY = 0;
+    if (existingBoxes.length) {
+        farX = Math.max(...existingBoxes.map(b => b[0] + b[2])) + PAD;
+        originY = Math.min(...existingBoxes.map(b => b[1]));
+    } else if ((data.nodes || []).length) {
+        farX = Math.min(...data.nodes.map(n => Number(n.pos?.[0]) || 0));
+        originY = Math.min(...data.nodes.map(n => Number(n.pos?.[1]) || 0));
+    }
+
+    let cursorY = originY;
+    const created = [...absorbed.entries()].map(([title, list]) => ({ title, count: list.length }));
+    let nextId = groups.length + 1;
+    for (const stage of WF_STAGES) {
+        const groupNodes = buckets.get(stage);
+        if (!groupNodes || !groupNodes.length) continue;
+        let title = WF_ADOPT_TITLES[stage] || stage;
+        const bypassed = groupNodes.filter(n => n.mode === 4).length;
+        if (bypassed / groupNodes.length >= 0.6) title = wfMarkOptional(title);
+        const color = wfGroupColorFor(stage, { title }, groupNodes);
+        const group = {
+            id: `evmg_adopt_${stage.toLowerCase()}_${nextId}`,
+            title,
+            x: snap(farX),
+            y: snap(cursorY),
+            w: DEFAULT_RAIL_W * 2 + MIN_CENTER_W,
+            h: MIN_GROUP_H,
+            leftRailOpen: true,
+            rightRailOpen: true,
+            leftRailW: DEFAULT_RAIL_W,
+            rightRailW: DEFAULT_RAIL_W,
+            color,
+            titleColor: color,
+            bodyColor: color,
+            fontSize: DEF_FONT_SIZE,
+            getNodeIds: [],
+            setNodeIds: [],
+            _colorMigratedV2: true,
+        };
+        groups.push(group);
+        const bounding = wfTidyGroup(data, group, [farX, cursorY], groupNodes);
+        cursorY = bounding[1] + bounding[3] + PAD;
+        created.push({ title, count: groupNodes.length });
+        nextId += 1;
+    }
+    wfSetGroups(data, groups);
+    return created;
+}
+
+function wfBuildGroups(data) {
+    const nodes = (data.nodes || []).filter(n => !WF_HELPER_TYPES.has(String(n.type)));
+    const stageOf = wfClassifyNodesByGraph(data);
+    const buckets = new Map();
+    for (const node of nodes) {
+        const st = stageOf.get(Number(node.id)) || WF_OTHER;
+        if (st === WF_AUX) continue;
+        if (!buckets.has(st)) buckets.set(st, []);
+        buckets.get(st).push(node);
+    }
+
+    const originX = nodes.length ? (Math.min(...nodes.map(n => Number(n.pos?.[0]) || 0)) - DEFAULT_RAIL_W - PAD) : 0;
+    const originY = nodes.length ? (Math.min(...nodes.map(n => Number(n.pos?.[1]) || 0)) - 90) : 0;
+    const groups = [];
+    let nextId = 1;
+    let cursorX = originX;
+
+    for (const stage of [...WF_STAGES, WF_OTHER]) {
+        const groupNodes = buckets.get(stage);
+        if (!groupNodes || !groupNodes.length) continue;
+        const title = WF_ADOPT_TITLES[stage] || stage;
+        const color = wfGroupColorFor(stage, { title }, groupNodes);
+        const group = {
+            id: `evmg_${stage.toLowerCase()}_${nextId}`,
+            title,
+            x: snap(cursorX),
+            y: snap(originY),
+            w: DEFAULT_RAIL_W * 2 + MIN_CENTER_W,
+            h: MIN_GROUP_H,
+            leftRailOpen: true,
+            rightRailOpen: true,
+            leftRailW: DEFAULT_RAIL_W,
+            rightRailW: DEFAULT_RAIL_W,
+            color,
+            titleColor: color,
+            bodyColor: color,
+            fontSize: DEF_FONT_SIZE,
+            getNodeIds: [],
+            setNodeIds: [],
+            _colorMigratedV2: true,
+        };
+        groups.push(group);
+        const bounding = wfTidyGroup(data, group, [cursorX, originY], groupNodes);
+        cursorX = bounding[0] + bounding[2] + PAD;
+        nextId += 1;
+    }
+    wfSetGroups(data, groups);
+    return groups;
+}
+
+function wfAssignMembers(data, groups) {
+    const assignment = new Map(groups.map(g => [g, []]));
+    const byId = new Map((data.nodes || []).map(n => [Number(n.id), n]));
+    const candidates = new Map();
+
+    for (const g of groups) {
+        for (const node of wfMembersOf(data, g)) {
+            if (WF_HELPER_TYPES.has(String(node.type))) continue;
+            const nid = Number(node.id);
+            if (!candidates.has(nid)) candidates.set(nid, []);
+            candidates.get(nid).push(g);
+        }
+    }
+
+    for (const [nodeId, owners] of candidates.entries()) {
+        const node = byId.get(nodeId);
+        if (!node) continue;
+        const best = owners.reduce((a, b) => {
+            const ba = wfGroupBox(a);
+            const bb = wfGroupBox(b);
+            return (ba[2] * ba[3] <= bb[2] * bb[3]) ? a : b;
+        });
+        assignment.get(best).push(node);
+    }
+    return assignment;
+}
+
+function wfSanitizeGroupPrefix(title) {
+    let raw = String(title || "").trim();
+    raw = raw.replace(/\s*[-–—(]\s*(opt|opcional|optional)\)?\s*$/i, "").trim();
+    if (!raw) return "Group";
+    let s = raw.replace(/\s+/g, "_");
+    s = s.replace(/[^a-zA-Z0-9_\-\u00C0-\u017F]/g, "");
+    s = s.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+    return s || "Group";
+}
+
+function wfSplitMixedInputOutputGroups(data, groups, assignment) {
+    const links = data.links || [];
+    const linkById = new Map();
+    for (const lk of links) {
+        if (Array.isArray(lk) && lk.length >= 5) linkById.set(Number(lk[0]), lk);
+    }
+
+    const isPurePreviewType = (ntype) =>
+        /^(PreviewImage|PreviewAudio|MaskPreview|ShowText|PreviewAny|TextPreview)/i.test(String(ntype || ""));
+
+    const deriveSplitTitles = (origTitle, inputNodes, outputNodes) => {
+        const raw = String(origTitle || "").trim();
+        const hasAudioIn = inputNodes.some(n => /Audio|Voice|Voz|TTS|Music/i.test(String(n.type || "")));
+        const hasVideoIn = inputNodes.some(n => /Video/i.test(String(n.type || "")));
+        const hasVideoOut = outputNodes.some(n => /Video/i.test(String(n.type || "")));
+
+        let inTitle = hasAudioIn ? "Load Audio" : (hasVideoIn ? "Load Video" : "Load Image");
+        let outTitle = hasVideoOut ? "Save Video" : "Save Image";
+
+        // Se o título original tinha separador explícito ("Load + Save Image", "Input / Output", etc.)
+        const parts = raw.split(/\s*(?:\+|&|\/|\be\b|\band\b)\s*/i).map(s => s.trim()).filter(Boolean);
+        if (parts.length === 2) {
+            const [p1, p2] = parts;
+            if (/load|input|ref|image|audio|video/i.test(p1) && /save|output|export|preview/i.test(p2)) {
+                inTitle = /image|audio|video|input/i.test(p1) ? p1 : `${p1} ${p2.replace(/^.*?(image|audio|video)/i, "$1")}`.trim();
+                outTitle = p2;
+            }
+        }
+        return [inTitle, outTitle];
+    };
+
+    const newGroups = [];
+    let nextSplitIdx = groups.length + 1;
+
+    for (const g of groups) {
+        const members = assignment.get(g) || [];
+        const central = members.filter(n => n.type !== "GetNode" && n.type !== "SetNode");
+        if (central.length < 2) {
+            newGroups.push(g);
+            continue;
+        }
+
+        const centralIds = new Set(central.map(n => Number(n.id)));
+        const inputSeeds = central.filter(n => wfStageFromNode(n) === "INPUT");
+        if (!inputSeeds.length) {
+            newGroups.push(g);
+            continue;
+        }
+
+        // Expande o conjunto de INPUT para nós auxiliares/escala ligados diretamente aos inputs (e Previews exclusivos do input)
+        const inputSet = new Set(inputSeeds.map(n => Number(n.id)));
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (const n of central) {
+                const nid = Number(n.id);
+                if (inputSet.has(nid)) continue;
+                const st = wfStageFromNode(n);
+                if (st === "OUTPUT") {
+                    // Só absorve no inputSet se for um nó de Preview alimentado exclusivamente pelo inputSet
+                    if (isPurePreviewType(n.type)) {
+                        const inLinks = (n.inputs || []).map(inp => inp?.link).filter(lid => lid != null && linkById.has(Number(lid)));
+                        if (inLinks.length > 0 && inLinks.every(lid => inputSet.has(Number(linkById.get(Number(lid))[1])))) {
+                            inputSet.add(nid);
+                            changed = true;
+                        }
+                    }
+                    continue;
+                }
+                // Se for outro nó de INPUT ou transformação alimentada pelo inputSet
+                const fedByInput = (n.inputs || []).some(inp => {
+                    const lid = inp?.link;
+                    return lid != null && linkById.has(Number(lid)) && inputSet.has(Number(linkById.get(Number(lid))[1]));
+                });
+                if (fedByInput && (st === "INPUT" || st === "SETTINGS" || st === WF_OTHER)) {
+                    inputSet.add(nid);
+                    changed = true;
+                }
+            }
+        }
+
+        // Verifica se sobrou pelo menos um nó de OUTPUT legítimo fora do inputSet
+        const remainingCentral = central.filter(n => !inputSet.has(Number(n.id)));
+        const hasTrueOutput = remainingCentral.some(n => wfStageFromNode(n) === "OUTPUT");
+        if (!hasTrueOutput || !remainingCentral.length) {
+            newGroups.push(g);
+            continue;
+        }
+
+        // Só separa se todos os nós restantes pertencerem ao fluxo de saída (OUTPUT)
+        const nonOutputRemaining = remainingCentral.filter(n => wfStageFromNode(n) !== "OUTPUT");
+        if (nonOutputRemaining.length > 0) {
+            newGroups.push(g);
+            continue;
+        }
+
+        const inputNodes = central.filter(n => inputSet.has(Number(n.id)));
+        const outputNodes = remainingCentral;
+
+        // Separa também os GetNodes e SetNodes ancorados no grupo conforme a qual subconjunto estão ligados
+        const getNodes = members.filter(n => n.type === "GetNode");
+        const setNodes = members.filter(n => n.type === "SetNode");
+
+        const inputGets = [];
+        const outputGets = [];
+        for (const gn of getNodes) {
+            const feedsInput = (gn.outputs || []).some(out =>
+                (out?.links || []).some(lid => linkById.has(Number(lid)) && inputSet.has(Number(linkById.get(Number(lid))[3])))
+            );
+            if (feedsInput) inputGets.push(gn);
+            else outputGets.push(gn);
+        }
+
+        const inputSets = [];
+        const outputSets = [];
+        for (const sn of setNodes) {
+            const fedByInput = (sn.inputs || []).some(inp => {
+                const lid = inp?.link;
+                return lid != null && linkById.has(Number(lid)) && inputSet.has(Number(linkById.get(Number(lid))[1]));
+            });
+            if (fedByInput) inputSets.push(sn);
+            else outputSets.push(sn);
+        }
+
+        const [inTitle, outTitle] = deriveSplitTitles(g.title, inputNodes, outputNodes);
+        const inColor = wfGroupColorFor("INPUT", { title: inTitle }, inputNodes);
+        const outColor = wfGroupColorFor("OUTPUT", { title: outTitle }, outputNodes);
+
+        const inGroup = {
+            ...JSON.parse(JSON.stringify(g)),
+            id: `evmg_input_${nextSplitIdx++}`,
+            title: inTitle,
+            color: inColor,
+            titleColor: inColor,
+            bodyColor: inColor,
+            getNodeIds: inputGets.map(n => n.id),
+            setNodeIds: inputSets.map(n => n.id),
+            leftRailOpen: inputGets.length > 0,
+            rightRailOpen: inputSets.length > 0,
+            _stage: "INPUT",
+        };
+
+        g.title = outTitle;
+        g.color = outColor;
+        g.titleColor = outColor;
+        g.bodyColor = outColor;
+        g.getNodeIds = outputGets.map(n => n.id);
+        g.setNodeIds = outputSets.map(n => n.id);
+        g.leftRailOpen = outputGets.length > 0;
+        g.rightRailOpen = outputSets.length > 0;
+        g._stage = "OUTPUT";
+
+        assignment.set(inGroup, [...inputNodes, ...inputGets, ...inputSets]);
+        assignment.set(g, [...outputNodes, ...outputGets, ...outputSets]);
+
+        newGroups.push(inGroup, g);
+    }
+
+    if (newGroups.length !== groups.length) {
+        groups.splice(0, groups.length, ...newGroups);
+        wfSetGroups(data, groups);
+    }
+}
+
+function wfEnsureNotesGrouped(data, groups, assignment) {
+    const allNodes = data.nodes || [];
+    const allNoteNodes = allNodes.filter(n => wfIsNoteNode(n));
+    if (!allNoteNodes.length) {
+        // Mesmo sem nós de nota, se houver grupo com título de nota, força estágio NOTES e cor preta
+        for (const g of groups) {
+            if (wfStageFromText(g.title) === "NOTES") {
+                const c = WF_PALETTE.NOTES.group;
+                g._stage = "NOTES";
+                g.color = c;
+                g.titleColor = c;
+                g.bodyColor = c;
+            }
+        }
+        return;
+    }
+
+    const noteGroups = [];
+    const noteAssignedIds = new Set();
+
+    // 1. Identifica grupos puramente de notas e extrai notas misturadas em grupos de outras etapas
+    for (const g of groups) {
+        const members = assignment.get(g) || [];
+        const central = members.filter(n => n.type !== "GetNode" && n.type !== "SetNode");
+        const notesInG = central.filter(n => wfIsNoteNode(n));
+        const nonNotesInG = central.filter(n => !wfIsNoteNode(n));
+        const isNoteTitle = wfStageFromText(g.title) === "NOTES";
+
+        if (isNoteTitle && nonNotesInG.length === 0) {
+            noteGroups.push(g);
+            g._stage = "NOTES";
+            for (const n of notesInG) noteAssignedIds.add(Number(n.id));
+        } else if (notesInG.length > 0 && nonNotesInG.length === 0) {
+            noteGroups.push(g);
+            g._stage = "NOTES";
+            if (!g.title || /^(group|grupo|nodes?\s*\d*|\d+)$/i.test(String(g.title).trim())) {
+                g.title = notesInG.every(n => n.type === "MarkdownNote") ? "Markdown Notes" : "Notes";
+            }
+            for (const n of notesInG) noteAssignedIds.add(Number(n.id));
+        } else if (notesInG.length > 0 && nonNotesInG.length > 0) {
+            // Retira as notas que estavam misturadas com nós de outra etapa
+            assignment.set(g, members.filter(n => !wfIsNoteNode(n)));
+        }
+    }
+
+    // 2. Coleta todas as notas ainda sem grupo de notas (soltas ou extraídas de grupos mistos)
+    const looseNotes = allNoteNodes.filter(n => !noteAssignedIds.has(Number(n.id)));
+    if (looseNotes.length > 0) {
+        if (noteGroups.length > 0) {
+            const targetG = noteGroups[0];
+            const curList = assignment.get(targetG) || [];
+            for (const n of looseNotes) {
+                if (!curList.some(x => Number(x.id) === Number(n.id))) {
+                    curList.push(n);
+                }
+            }
+            assignment.set(targetG, curList);
+        } else {
+            const nonNoteBoxes = groups.map(g => wfGroupBox(g));
+            const baseX = nonNoteBoxes.length
+                ? Math.min(...nonNoteBoxes.map(b => b[0]))
+                : Math.min(...looseNotes.map(n => Number(n.pos?.[0]) || 0));
+            const baseY = nonNoteBoxes.length
+                ? Math.min(...nonNoteBoxes.map(b => b[1]))
+                : Math.min(...looseNotes.map(n => Number(n.pos?.[1]) || 0));
+            const allMarkdown = looseNotes.every(n => n.type === "MarkdownNote");
+            const title = allMarkdown ? "Markdown Notes" : "Notes";
+            const color = WF_PALETTE.NOTES.group;
+            const noteGroup = {
+                id: `evmg_notes_${groups.length + 1}`,
+                title,
+                x: snap(baseX),
+                y: snap(baseY),
+                w: MIN_CENTER_W + 2 * PAD,
+                h: MIN_GROUP_H,
+                leftRailOpen: false,
+                rightRailOpen: false,
+                leftRailW: DEFAULT_RAIL_W,
+                rightRailW: DEFAULT_RAIL_W,
+                color,
+                titleColor: color,
+                bodyColor: color,
+                fontSize: DEF_FONT_SIZE,
+                getNodeIds: [],
+                setNodeIds: [],
+                _colorMigratedV2: true,
+                _stage: "NOTES",
+            };
+            groups.unshift(noteGroup);
+            assignment.set(noteGroup, [...looseNotes]);
+            noteGroups.push(noteGroup);
+            wfSetGroups(data, groups);
+        }
+    }
+
+    // 3. Garante cor preta e trilhos fechados em todos os grupos de notas
+    for (const ng of noteGroups) {
+        const c = WF_PALETTE.NOTES.group;
+        ng._stage = "NOTES";
+        ng.color = c;
+        ng.titleColor = c;
+        ng.bodyColor = c;
+        const m = assignment.get(ng) || [];
+        ng.leftRailOpen = m.some(n => n.type === "GetNode");
+        ng.rightRailOpen = m.some(n => n.type === "SetNode");
+    }
+}
+
+function wfWireSetGetBetweenGroups(data, groups, assignment) {
+    const nodes = data.nodes || [];
+    const links = data.links || [];
+    if (!nodes.length || !links.length || !groups.length) return [0, 0];
+
+    const byId = new Map(nodes.map(n => [Number(n.id), n]));
+    const groupOfNode = new Map();
+    for (const g of groups) {
+        for (const n of (assignment.get(g) || [])) {
+            groupOfNode.set(Number(n.id), g);
+        }
+    }
+
+    const linkById = new Map();
+    for (const lk of links) {
+        if (Array.isArray(lk) && lk.length >= 5) {
+            linkById.set(Number(lk[0]), lk);
+        }
+    }
+
+    const usedKeys = new Set();
+    const existingSetForOutput = new Map(); // `${srcId}:${srcSlot}` -> { setNode, key }
+    const existingGetInGroup = new Map();   // g -> Map(key -> getNode)
+    const producerByKey = new Map();        // key -> [srcId, srcSlot]
+
+    const reassignDockedNode = (node, targetGroup) => {
+        const nid = Number(node.id);
+        const oldGroup = groupOfNode.get(nid);
+        if (oldGroup === targetGroup) return;
+        if (oldGroup && assignment.has(oldGroup)) {
+            assignment.set(oldGroup, assignment.get(oldGroup).filter(x => Number(x.id) !== nid));
+            for (const keyList of ["getNodeIds", "setNodeIds"]) {
+                if (Array.isArray(oldGroup[keyList])) {
+                    oldGroup[keyList] = oldGroup[keyList].filter(x => String(x) !== String(nid));
+                }
+            }
+        }
+        if (targetGroup && assignment.has(targetGroup)) {
+            const arr = assignment.get(targetGroup);
+            if (!arr.some(x => Number(x.id) === nid)) arr.push(node);
+            groupOfNode.set(nid, targetGroup);
+            const keyList = node.type === "SetNode" ? "setNodeIds" : "getNodeIds";
+            if (!Array.isArray(targetGroup[keyList])) targetGroup[keyList] = [];
+            if (!targetGroup[keyList].some(x => String(x) === String(nid))) {
+                targetGroup[keyList].push(nid);
+            }
+            if (!node.flags || typeof node.flags !== "object") node.flags = { collapsed: true };
+            else if (!("collapsed" in node.flags)) node.flags.collapsed = true;
+        }
+    };
+
+    for (const n of nodes) {
+        if (n.type === "SetNode") {
+            let k = wfGetSetKey(n);
+            for (const inp of (n.inputs || [])) {
+                const lid = inp?.link;
+                if (lid != null && linkById.has(Number(lid))) {
+                    const lk = linkById.get(Number(lid));
+                    const originId = Number(lk[1]);
+                    const originSlot = Number(lk[2]);
+                    const prodGroup = groupOfNode.get(originId);
+                    if (prodGroup) {
+                        reassignDockedNode(n, prodGroup);
+                        const prefix = wfSanitizeGroupPrefix(prodGroup.title);
+                        const inType = String(inp.type || lk[5] || "*").split(",")[0].trim().toUpperCase();
+                        const rawType = inType.replace(/[^a-zA-Z0-9_]/g, "") || "OUT";
+                        const expectedBase = `${prefix}_${rawType}`;
+                        const reBase = new RegExp(`^${expectedBase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(_\\d+)?$`);
+                        if (!k || !reBase.test(k)) {
+                            let newK = expectedBase;
+                            let cnt = 2;
+                            while (usedKeys.has(newK)) {
+                                newK = `${expectedBase}_${cnt}`;
+                                cnt += 1;
+                            }
+                            const oldK = k;
+                            k = newK;
+                            n.title = `Set_${k}`;
+                            n.widgets_values = [k];
+                            n.widgets_values_named = { Constant: k };
+                            if (!n.properties || typeof n.properties !== "object") n.properties = {};
+                            n.properties.previousName = k;
+                            n.properties.evmGroupPrefix = prefix;
+                            n.properties.evmAutoNamed = true;
+                            if (oldK) {
+                                for (const gn of nodes) {
+                                    if (gn.type === "GetNode" && wfGetSetKey(gn) === oldK) {
+                                        gn.title = `Get_${k}`;
+                                        gn.widgets_values = [k];
+                                        gn.widgets_values_named = { Constant: k };
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    existingSetForOutput.set(`${originId}:${originSlot}`, { setNode: n, key: k });
+                    if (k) producerByKey.set(k, [originId, originSlot]);
+                }
+            }
+            if (k) {
+                usedKeys.add(k);
+                n.widgets_values = [k];
+                n.widgets_values_named = { Constant: k };
+            }
+        } else if (n.type === "GetNode") {
+            const k = wfGetSetKey(n);
+            if (k) {
+                n.widgets_values = [k];
+                n.widgets_values_named = { Constant: k };
+            }
+            let g = groupOfNode.get(Number(n.id));
+            const consumerGroups = [];
+            for (const out of (n.outputs || [])) {
+                for (const lid of (out?.links || [])) {
+                    if (lid != null && linkById.has(Number(lid))) {
+                        const lk = linkById.get(Number(lid));
+                        const cg = groupOfNode.get(Number(lk[3]));
+                        if (cg && !consumerGroups.includes(cg)) consumerGroups.push(cg);
+                    }
+                }
+            }
+            if (consumerGroups.length && (!g || !consumerGroups.includes(g))) {
+                g = consumerGroups[0];
+                reassignDockedNode(n, g);
+            }
+            if (k && g) {
+                if (!existingGetInGroup.has(g)) existingGetInGroup.set(g, new Map());
+                existingGetInGroup.get(g).set(k, n);
+            }
+        }
+    }
+
+    // Identifica links cruzando grupos diferentes
+    // Map: producerKey (`${srcId}:${srcSlot}`) -> { srcGroup, srcId, srcSlot, consumers: Map(dstGroup -> [lk]) }
+    const crossLinks = new Map();
+    const addCrossLink = (srcGroup, srcId, srcSlot, dstGroup, lk) => {
+        const pKey = `${srcId}:${srcSlot}`;
+        if (!crossLinks.has(pKey)) {
+            crossLinks.set(pKey, { srcGroup, srcId, srcSlot, consumers: new Map() });
+        }
+        const entry = crossLinks.get(pKey);
+        if (!entry.consumers.has(dstGroup)) entry.consumers.set(dstGroup, []);
+        entry.consumers.get(dstGroup).push(lk);
+    };
+
+    for (const lk of links) {
+        if (!Array.isArray(lk) || lk.length < 5) continue;
+        const srcId = Number(lk[1]);
+        const srcSlot = Number(lk[2]);
+        const dstId = Number(lk[3]);
+        const srcNode = byId.get(srcId);
+        const dstNode = byId.get(dstId);
+        if (!srcNode || !dstNode) continue;
+        if (dstNode.type === "SetNode" || dstNode.type === "GetNode" || srcNode.type === "SetNode") continue;
+        if (WF_HELPER_TYPES.has(String(srcNode.type)) || WF_HELPER_TYPES.has(String(dstNode.type))) continue;
+
+        const srcGroup = groupOfNode.get(srcId);
+        const dstGroup = groupOfNode.get(dstId);
+        if (!srcGroup || !dstGroup || srcGroup === dstGroup) continue;
+
+        if (srcNode.type === "GetNode") {
+            const k = wfGetSetKey(srcNode);
+            if (producerByKey.has(k)) {
+                const [realSrcId, realSrcSlot] = producerByKey.get(k);
+                const realSrcGroup = groupOfNode.get(realSrcId);
+                if (realSrcGroup && realSrcGroup !== dstGroup) {
+                    addCrossLink(realSrcGroup, realSrcId, realSrcSlot, dstGroup, lk);
+                }
+            }
+            continue;
+        }
+        addCrossLink(srcGroup, srcId, srcSlot, dstGroup, lk);
+    }
+
+    if (!crossLinks.size) {
+        for (const g of groups) {
+            const gMembers = assignment.get(g) || [];
+            g.leftRailOpen = gMembers.some(n => n.type === "GetNode");
+            g.rightRailOpen = gMembers.some(n => n.type === "SetNode");
+        }
+        return [0, 0];
+    }
+
+    let maxNodeId = Math.max(Number(data.last_node_id) || 0, ...nodes.map(n => Number(n.id) || 0));
+    let maxLinkId = Math.max(Number(data.last_link_id) || 0, ...links.map(lk => (Array.isArray(lk) ? Number(lk[0]) || 0 : 0)));
+    let maxOrder = Math.max(0, ...nodes.map(n => Number(n.order) || 0));
+
+    let setCreated = 0;
+    let getCreated = 0;
+
+    const sortedProducers = [...crossLinks.values()].sort((a, b) => {
+        const na = byId.get(a.srcId);
+        const nb = byId.get(b.srcId);
+        return (
+            (Number(na?.pos?.[1]) || 0) - (Number(nb?.pos?.[1]) || 0) ||
+            (Number(na?.pos?.[0]) || 0) - (Number(nb?.pos?.[0]) || 0) ||
+            a.srcId - b.srcId ||
+            a.srcSlot - b.srcSlot
+        );
+    });
+
+    for (const item of sortedProducers) {
+        const { srcGroup, srcId, srcSlot, consumers } = item;
+        const srcNode = byId.get(srcId);
+        let dataType = "*";
+        const srcOutputs = srcNode?.outputs || [];
+        if (srcSlot >= 0 && srcSlot < srcOutputs.length && srcOutputs[srcSlot]?.type) {
+            dataType = String(srcOutputs[srcSlot].type);
+        }
+        if (dataType === "*") {
+            const firstLkList = [...consumers.values()][0];
+            if (firstLkList?.[0]?.[5]) dataType = String(firstLkList[0][5]);
+        }
+
+        const outKey = `${srcId}:${srcSlot}`;
+        let finalKey = "";
+        if (existingSetForOutput.has(outKey)) {
+            finalKey = existingSetForOutput.get(outKey).key;
+        } else {
+            const prefix = wfSanitizeGroupPrefix(srcGroup.title);
+            const rawType = dataType.replace(/[^a-zA-Z0-9_]/g, "") || "DATA";
+            const baseKey = `${prefix}_${rawType}`;
+            finalKey = baseKey;
+            let counter = 2;
+            while (usedKeys.has(finalKey)) {
+                finalKey = `${baseKey}_${counter}`;
+                counter += 1;
+            }
+            usedKeys.add(finalKey);
+
+            maxNodeId += 1;
+            maxLinkId += 1;
+            maxOrder += 1;
+            const setNodeId = maxNodeId;
+            const setLinkId = maxLinkId;
+
+            const srcStage = srcGroup._stage || wfClassifyGroup(data, srcGroup);
+            const style = WF_PALETTE[srcStage] || WF_PALETTE.OTHER;
+            const nodeColor = style.node || "#1b4669";
+            const nodeBg = style.bg || "#29699c";
+
+            const newSetLink = [setLinkId, srcId, srcSlot, setNodeId, 0, dataType];
+            links.push(newSetLink);
+            linkById.set(setLinkId, newSetLink);
+
+            if (srcSlot >= 0 && srcSlot < srcOutputs.length && srcOutputs[srcSlot]) {
+                if (!Array.isArray(srcOutputs[srcSlot].links)) srcOutputs[srcSlot].links = [];
+                srcOutputs[srcSlot].links.push(setLinkId);
+            }
+
+            const setNode = {
+                id: setNodeId,
+                type: "SetNode",
+                title: `Set_${finalKey}`,
+                pos: [
+                    snap((Number(srcNode.pos?.[0]) || 0) + wfNodeSize(srcNode)[0] + PAD),
+                    snap((Number(srcNode.pos?.[1]) || 0) + srcSlot * 20),
+                ],
+                size: [MIN_RAIL_INNER_W, 60],
+                flags: { collapsed: true },
+                order: maxOrder,
+                mode: 0,
+                inputs: [{ name: dataType, type: dataType, link: setLinkId }],
+                outputs: [{ name: "*", type: "*", links: [] }],
+                properties: {
+                    "Node name for S&R": "SetNode",
+                    aux_id: "kijai/ComfyUI-KJNodes",
+                    previousName: finalKey,
+                    evmGroupPrefix: prefix,
+                    evmAutoNamed: true,
+                },
+                widgets_values: [finalKey],
+                widgets_values_named: { Constant: finalKey },
+                color: nodeColor,
+                bgcolor: nodeBg,
+            };
+            setNode.size[0] = wfDockedNodeExpandedWidth(setNode);
+            nodes.push(setNode);
+            byId.set(setNodeId, setNode);
+            assignment.get(srcGroup).push(setNode);
+            groupOfNode.set(setNodeId, srcGroup);
+            if (!Array.isArray(srcGroup.setNodeIds)) srcGroup.setNodeIds = [];
+            if (!srcGroup.setNodeIds.includes(setNodeId)) srcGroup.setNodeIds.push(setNodeId);
+            existingSetForOutput.set(outKey, { setNode, key: finalKey });
+            setCreated += 1;
+        }
+
+        for (const [dstGroup, lkList] of consumers.entries()) {
+            if (!existingGetInGroup.has(dstGroup)) existingGetInGroup.set(dstGroup, new Map());
+            const dstMap = existingGetInGroup.get(dstGroup);
+            let getNode = dstMap.get(finalKey);
+            let getNodeId;
+
+            if (getNode) {
+                getNodeId = Number(getNode.id);
+            } else {
+                maxNodeId += 1;
+                maxOrder += 1;
+                getNodeId = maxNodeId;
+
+                const dstStage = dstGroup._stage || wfClassifyGroup(data, dstGroup);
+                const style = WF_PALETTE[dstStage] || WF_PALETTE.OTHER;
+                const nodeColor = style.node || "#1b4669";
+                const nodeBg = style.bg || "#29699c";
+
+                const firstDstNode = byId.get(Number(lkList[0][3]));
+                const firstDstSlot = Number(lkList[0][4]) || 0;
+                const initY = firstDstNode
+                    ? ((Number(firstDstNode.pos?.[1]) || 0) + firstDstSlot * 20)
+                    : ((Number(dstGroup.y) || 0) + 120);
+                const initX = (Number(dstGroup.x) || 0) + PAD;
+
+                getNode = {
+                    id: getNodeId,
+                    type: "GetNode",
+                    title: `Get_${finalKey}`,
+                    pos: [snap(initX), snap(initY)],
+                    size: [MIN_RAIL_INNER_W, 60],
+                    flags: { collapsed: true },
+                    order: maxOrder,
+                    mode: 0,
+                    inputs: [],
+                    outputs: [{ name: dataType, type: dataType, links: [], slot_index: 0 }],
+                    properties: {
+                        "Node name for S&R": "GetNode",
+                        aux_id: "kijai/ComfyUI-KJNodes",
+                    },
+                    widgets_values: [finalKey],
+                    widgets_values_named: { Constant: finalKey },
+                    color: nodeColor,
+                    bgcolor: nodeBg,
+                };
+                getNode.size[0] = wfDockedNodeExpandedWidth(getNode);
+                nodes.push(getNode);
+                byId.set(getNodeId, getNode);
+                assignment.get(dstGroup).push(getNode);
+                groupOfNode.set(getNodeId, dstGroup);
+                if (!Array.isArray(dstGroup.getNodeIds)) dstGroup.getNodeIds = [];
+                if (!dstGroup.getNodeIds.includes(getNodeId)) dstGroup.getNodeIds.push(getNodeId);
+                dstMap.set(finalKey, getNode);
+                getCreated += 1;
+            }
+
+            if (!Array.isArray(getNode.outputs[0].links)) getNode.outputs[0].links = [];
+            const getOutLinks = getNode.outputs[0].links;
+            for (const lk of lkList) {
+                const lid = Number(lk[0]);
+                const oldSrcNode = byId.get(Number(lk[1]));
+                const oldSrcSlot = Number(lk[2]);
+                if (oldSrcNode?.outputs?.[oldSrcSlot]?.links) {
+                    const arr = oldSrcNode.outputs[oldSrcSlot].links;
+                    const idx = arr.indexOf(lid);
+                    if (idx !== -1) arr.splice(idx, 1);
+                }
+                lk[1] = getNodeId;
+                lk[2] = 0;
+                if (!getOutLinks.includes(lid)) getOutLinks.push(lid);
+            }
+        }
+    }
+
+    data.last_node_id = maxNodeId;
+    data.last_link_id = maxLinkId;
+
+    // Remove GetNodes órfãos sem links de saída
+    const orphanGetIds = new Set(
+        nodes
+            .filter(n => n.type === "GetNode" && !(n.outputs || []).some(o => Array.isArray(o?.links) && o.links.length > 0))
+            .map(n => Number(n.id))
+    );
+    if (orphanGetIds.size) {
+        data.nodes = nodes.filter(n => !orphanGetIds.has(Number(n.id)));
+        for (const g of groups) {
+            if (Array.isArray(g.getNodeIds)) {
+                g.getNodeIds = g.getNodeIds.filter(nid => !orphanGetIds.has(Number(nid)));
+            }
+            if (assignment.has(g)) {
+                assignment.set(g, assignment.get(g).filter(n => !orphanGetIds.has(Number(n.id))));
+            }
+        }
+    }
+
+    for (const g of groups) {
+        const gMembers = assignment.get(g) || [];
+        g.leftRailOpen = gMembers.some(n => n.type === "GetNode");
+        g.rightRailOpen = gMembers.some(n => n.type === "SetNode");
+    }
+    return [setCreated, getCreated];
+}
+
+function wfDependencyLevels(data, groups, membersByGroup, groupByNode) {
+    const local = new Set(groups);
+    const { downstream } = wfGroupGraph(data, groups, membersByGroup, groupByNode);
+    const localDown = new Map();
+    const feeders = new Map();
+    for (const g of local) {
+        localDown.set(g, new Set([...(downstream.get(g) || [])].filter(t => local.has(t))));
+        feeders.set(g, new Set());
+    }
+    for (const [g, targets] of localDown.entries()) {
+        for (const t of targets) feeders.get(t).add(g);
+    }
+    const degree = new Map();
+    const level = new Map();
+    const queue = [];
+    for (const g of local) {
+        const d = feeders.get(g).size;
+        degree.set(g, d);
+        level.set(g, 0);
+        if (d === 0) queue.push(g);
+    }
+    while (queue.length) {
+        const g = queue.shift();
+        for (const t of (localDown.get(g) || [])) {
+            level.set(t, Math.max(level.get(t), level.get(g) + 1));
+            degree.set(t, degree.get(t) - 1);
+            if (degree.get(t) === 0) queue.push(t);
+        }
+    }
+    return level;
+}
+
+function wfDirectFeeders(data, localGroups, groupByNode) {
+    const direct = new Map();
+    for (const g of localGroups) direct.set(g, new Set());
+    for (const link of (data.links || [])) {
+        if (!Array.isArray(link) || link.length < 4) continue;
+        const src = groupByNode.get(Number(link[1]));
+        const dst = groupByNode.get(Number(link[3]));
+        if (src && dst && src !== dst && localGroups.has(src) && localGroups.has(dst)) {
+            direct.get(dst).add(src);
+        }
+    }
+    const setsByKey = new Map();
+    const getsByKey = new Map();
+    for (const n of (data.nodes || [])) {
+        const key = wfGetSetKey(n);
+        if (!key) continue;
+        if (n.type === "SetNode") {
+            if (!setsByKey.has(key)) setsByKey.set(key, []);
+            setsByKey.get(key).push(Number(n.id));
+        } else if (n.type === "GetNode") {
+            if (!getsByKey.has(key)) getsByKey.set(key, []);
+            getsByKey.get(key).push(Number(n.id));
+        }
+    }
+    for (const [key, sIds] of setsByKey.entries()) {
+        for (const sId of sIds) {
+            const src = groupByNode.get(sId);
+            if (!src || !localGroups.has(src)) continue;
+            for (const gId of (getsByKey.get(key) || [])) {
+                const dst = groupByNode.get(gId);
+                if (dst && localGroups.has(dst) && dst !== src) {
+                    direct.get(dst).add(src);
+                }
+            }
+        }
+    }
+    return direct;
+}
+
+function wfChainColumns(data, groups, columns, groupByNode) {
+    const local = new Set(groups);
+    if (!local.size) return columns;
+
+    const colOf = new Map();
+    columns.forEach((col, idx) => {
+        for (const g of col) colOf.set(g, idx);
+    });
+
+    const direct = wfDirectFeeders(data, local, groupByNode);
+    const consumers = new Map();
+    for (const [g, sources] of direct.entries()) {
+        for (const src of sources) {
+            if (!consumers.has(src)) consumers.set(src, new Set());
+            consumers.get(src).add(g);
+        }
+    }
+
+    const bridges = [];
+    for (const g of local) {
+        if (g._stage !== "UPSCALE") continue;
+        const sources = [...(direct.get(g) || [])].filter(f => f._stage === "SAMPLING");
+        if (!sources.length) continue;
+        const downSampling = [...(consumers.get(g) || [])].filter(
+            c => c._stage === "SAMPLING" && colOf.get(c) < colOf.get(g)
+        );
+        if (!downSampling.length) continue;
+        const anchor = sources.reduce((a, b) => (colOf.get(a) >= colOf.get(b) ? a : b));
+        if (colOf.get(anchor) + 1 < colOf.get(g)) {
+            bridges.push({ anchorCol: colOf.get(anchor), gCol: colOf.get(g), g, anchor });
+        }
+    }
+
+    bridges.sort((a, b) => a.anchorCol - b.anchorCol || a.gCol - b.gCol);
+    for (const { g, anchor } of bridges) {
+        const colIdx = columns.findIndex(c => c.includes(g));
+        if (colIdx !== -1) {
+            columns[colIdx] = columns[colIdx].filter(x => x !== g);
+            if (!columns[colIdx].length) columns.splice(colIdx, 1);
+        }
+        const targetIdx = columns.findIndex(c => c.includes(anchor)) + 1;
+        columns.splice(targetIdx, 0, [g]);
+    }
+
+    for (const col of columns) {
+        col.sort((a, b) => {
+            const ba = wfGroupBox(a);
+            const bb = wfGroupBox(b);
+            return ba[1] - bb[1] || ba[0] - bb[0];
+        });
+    }
+    return columns;
+}
+
+function wfPaintNodes(data, group, stage, members) {
+    const style = WF_PALETTE[stage];
+    if (!style || !style.node) return 0;
+    const list = members || wfMembersOf(data, group);
+    let changed = 0;
+    for (const node of list) {
+        if (WF_HELPER_TYPES.has(String(node.type))) continue;
+        if (node.color !== style.node || node.bgcolor !== style.bg) {
+            node.color = style.node;
+            node.bgcolor = style.bg;
+            changed += 1;
+        }
+    }
+    return changed;
+}
+
+function wfPlaceHelpersTop(data, assignedIds, originX, topY) {
+    const helpers = (data.nodes || []).filter(
+        n => WF_HELPER_TYPES.has(String(n.type)) && !assignedIds.has(Number(n.id))
+    );
+    if (!helpers.length) return [];
+    helpers.sort((a, b) => (Number(a.pos?.[0]) || 0) - (Number(b.pos?.[0]) || 0) || (Number(a.pos?.[1]) || 0) - (Number(b.pos?.[1]) || 0));
+    const maxHeight = Math.max(...helpers.map(n => snapUp(wfNodeSize(n)[1])));
+    const y = snap(topY) - maxHeight - PAD;
+    let cursor = snap(originX);
+    for (const node of helpers) {
+        const [w, h] = wfNodeSize(node);
+        node.pos = [snap(cursor), snap(y + (maxHeight - h))];
+        cursor += snapUp(w) + PAD;
+    }
+    return helpers;
+}
+
+function wfIsRerouteNode(node) {
+    const t = String(node?.type || "");
+    return t === "Reroute" || t === "Reroute (rgthree)" || t === "ReroutePrimitive" || /^Reroute\b/i.test(t);
+}
+
+function wfRemoveReroutes(data) {
+    const nodes = data.nodes || [];
+    const links = data.links || [];
+    const rerouteNodes = nodes.filter(n => wfIsRerouteNode(n));
+    if (!rerouteNodes.length) return 0;
+
+    const rerouteIds = new Set(rerouteNodes.map(n => Number(n.id)));
+    const byId = new Map(nodes.map(n => [Number(n.id), n]));
+    const linkById = new Map();
+    const incomingLinkByNode = new Map();
+
+    for (const lk of links) {
+        if (Array.isArray(lk) && lk.length >= 5) {
+            const lid = Number(lk[0]);
+            const dstId = Number(lk[3]);
+            linkById.set(lid, lk);
+            if (rerouteIds.has(dstId)) {
+                incomingLinkByNode.set(dstId, lk);
+            }
+        }
+    }
+
+    for (const rn of rerouteNodes) {
+        const rid = Number(rn.id);
+        if (!incomingLinkByNode.has(rid)) {
+            for (const inp of (rn.inputs || [])) {
+                const lid = inp?.link;
+                if (lid != null && linkById.has(Number(lid))) {
+                    incomingLinkByNode.set(rid, linkById.get(Number(lid)));
+                    break;
+                }
+            }
+        }
+    }
+
+    const resolveOrigin = (startRerouteId) => {
+        let curId = Number(startRerouteId);
+        const visited = new Set([curId]);
+        while (rerouteIds.has(curId)) {
+            const inLk = incomingLinkByNode.get(curId);
+            if (!inLk) return null;
+            const srcId = Number(inLk[1]);
+            const srcSlot = Number(inLk[2]);
+            const ltype = inLk.length >= 6 ? inLk[5] : "*";
+            if (!rerouteIds.has(srcId)) {
+                return { srcId, srcSlot, ltype };
+            }
+            if (visited.has(srcId)) return null;
+            visited.add(srcId);
+            curId = srcId;
+        }
+        return null;
+    };
+
+    const linksToRemove = new Set();
+
+    for (const lk of links) {
+        if (!Array.isArray(lk) || lk.length < 5) continue;
+        const lid = Number(lk[0]);
+        const srcId = Number(lk[1]);
+        const srcSlot = Number(lk[2]);
+        const dstId = Number(lk[3]);
+        const dstSlot = Number(lk[4]);
+
+        if (rerouteIds.has(dstId)) {
+            // Link entrando em um Reroute: remove da saída do nó de origem (se for nó real) e marca link para remoção
+            linksToRemove.add(lid);
+            if (!rerouteIds.has(srcId)) {
+                const srcNode = byId.get(srcId);
+                const outArr = srcNode?.outputs?.[srcSlot]?.links;
+                if (Array.isArray(outArr)) {
+                    const idx = outArr.indexOf(lid);
+                    if (idx !== -1) outArr.splice(idx, 1);
+                }
+            }
+        } else if (rerouteIds.has(srcId)) {
+            // Link saindo de um Reroute para um nó real: religa direto na origem real (ou remove se órfão)
+            const origin = resolveOrigin(srcId);
+            const dstNode = byId.get(dstId);
+            if (origin && byId.has(origin.srcId)) {
+                lk[1] = origin.srcId;
+                lk[2] = origin.srcSlot;
+                const realSrcNode = byId.get(origin.srcId);
+                const outObj = realSrcNode?.outputs?.[origin.srcSlot];
+                if (outObj) {
+                    if (!Array.isArray(outObj.links)) outObj.links = [];
+                    if (!outObj.links.includes(lid)) outObj.links.push(lid);
+                    if ((!lk[5] || lk[5] === "*") && outObj.type && outObj.type !== "*") {
+                        lk[5] = outObj.type;
+                    }
+                }
+                if ((!lk[5] || lk[5] === "*") && origin.ltype && origin.ltype !== "*") {
+                    lk[5] = origin.ltype;
+                }
+            } else {
+                linksToRemove.add(lid);
+                if (dstNode?.inputs?.[dstSlot]) {
+                    dstNode.inputs[dstSlot].link = null;
+                }
+            }
+        }
+    }
+
+    data.links = links.filter(lk => !(Array.isArray(lk) && linksToRemove.has(Number(lk[0]))));
+    data.nodes = nodes.filter(n => !rerouteIds.has(Number(n.id)));
+
+    // Limpa referências residuais em grupos se houver
+    for (const g of wfGetGroups(data)) {
+        for (const k of ["getNodeIds", "setNodeIds", "foldNodes"]) {
+            if (Array.isArray(g[k])) {
+                g[k] = g[k].filter(id => !rerouteIds.has(Number(id?.id ?? id)));
+            }
+        }
+    }
+    return rerouteNodes.length;
+}
+
+function wfLayoutOnce(data, opts = {}) {
+    const paint = opts.paint !== false;
+    const regroup = Boolean(opts.regroup);
+    const adopt = Boolean(opts.adopt);
+    const wireSetGet = opts.wire_set_get !== false;
+    const addOpt = opts.add_opt !== false;
+    const auxRow = opts.aux_row !== false;
+    const keepOrigin = opts.keep_origin !== false;
+    const chainWithinStage = opts.chain_within_stage !== false;
+    const bridgeTwoPass = opts.bridge_two_pass !== false;
+    const helpersTop = opts.helpers_top !== false;
+
+    const report = {
+        regrouped: false,
+        converted_evm: 0,
+        reroutes_removed: 0,
+        groups: 0,
+        set_created: 0,
+        get_created: 0,
+        repainted: 0,
+        optional_marked: [],
+        ungrouped: [],
+        adopted: [],
+        dropped: [],
+    };
+
+    // Remove todos os nós Reroute reconectando seus links diretamente antes de organizar
+    report.reroutes_removed = wfRemoveReroutes(data);
+
+    if (regroup) {
+        wfBuildGroups(data);
+        report.regrouped = true;
+    } else {
+        report.converted_evm = wfEnsureEvmGroups(data);
+        if (adopt) {
+            report.adopted = wfAdoptLooseNodes(data);
+        }
+    }
+
+    let groups = wfGetGroups(data);
+    if (!groups.length && !(data.nodes || []).some(n => wfIsNoteNode(n))) return report;
+
+    const assignment = wfAssignMembers(data, groups);
+
+    // Garante que tudo que for nota (Note, MarkdownNote, etc.) esteja em um grupo de cor preta (NOTES)
+    wfEnsureNotesGrouped(data, groups, assignment);
+
+    let empty = groups.filter(g => !(assignment.get(g) || []).length);
+    if (empty.length) {
+        report.dropped = empty.map(g => g.title);
+        groups = groups.filter(g => (assignment.get(g) || []).length > 0);
+        wfSetGroups(data, groups);
+    }
+    if (!groups.length) return report;
+
+    // Separa automaticamente grupos que misturam nós de INPUT (LoadImage/LoadAudio/etc.) com nós de OUTPUT (SaveImage/SaveVideo/etc.)
+    wfSplitMixedInputOutputGroups(data, groups, assignment);
+
+    const stageOf = wfStageMap(data, groups);
+    for (const g of groups) {
+        if (!g._stage) g._stage = stageOf.get(g) || WF_OTHER;
+    }
+
+    if (wireSetGet) {
+        const [sc, gc] = wfWireSetGetBetweenGroups(data, groups, assignment);
+        report.set_created = sc;
+        report.get_created = gc;
+    }
+
+    const groupByNode = new Map();
+    for (const [g, list] of assignment.entries()) {
+        for (const n of list) groupByNode.set(Number(n.id), g);
+    }
+
+    let originX = 0;
+    let originY = 0;
+    if (keepOrigin && groups.length) {
+        const nonNoteGroups = groups.filter(g => g._stage !== "NOTES");
+        const refGroups = nonNoteGroups.length ? nonNoteGroups : groups;
+        originX = snap(Math.min(...refGroups.map(g => wfGroupBox(g)[0])));
+        originY = snap(Math.min(...refGroups.map(g => wfGroupBox(g)[1])));
+    }
+
+    const pipeline = groups.filter(g => g._stage !== WF_AUX && g._stage !== WF_OTHER);
+    const aux = groups.filter(g => g._stage === WF_AUX);
+    const other = groups.filter(g => g._stage === WF_OTHER);
+
+    let topY = originY;
+    if (auxRow && aux.length) {
+        let cursorX = originX;
+        let rowHeight = 0;
+        for (const g of aux) {
+            const bounding = wfTidyGroup(data, g, [cursorX, originY], assignment.get(g));
+            cursorX = bounding[0] + bounding[2] + PAD;
+            rowHeight = Math.max(rowHeight, bounding[3]);
+        }
+        topY = originY + rowHeight + PAD;
+    }
+
+    const byStage = new Map();
+    for (const g of pipeline) {
+        let st = g._stage;
+        if (st === "INPUT" && wfHasAudioHint(g, assignment.get(g) || [])) {
+            const gx = wfGroupBox(g)[0];
+            const promptGroups = pipeline.filter(pg => pg._stage === "PROMPT");
+            const inputGroups = pipeline.filter(ig => ig._stage === "INPUT" && ig !== g);
+            if (promptGroups.length && inputGroups.length) {
+                const distPrompt = Math.min(...promptGroups.map(pg => Math.abs(gx - wfGroupBox(pg)[0])));
+                const distInput = Math.min(...inputGroups.map(ig => Math.abs(gx - wfGroupBox(ig)[0])));
+                if (distPrompt < distInput) st = "PROMPT";
+            }
+        }
+        if (!byStage.has(st)) byStage.set(st, []);
+        byStage.get(st).push(g);
+    }
+
+    let columns = [];
+    for (const stage of WF_STAGES) {
+        const col = byStage.get(stage);
+        if (!col || !col.length) continue;
+        col.sort((a, b) => wfGroupBox(a)[1] - wfGroupBox(b)[1] || wfGroupBox(a)[0] - wfGroupBox(b)[0]);
+        const level = chainWithinStage
+            ? wfDependencyLevels(data, col, assignment, groupByNode)
+            : new Map(col.map(g => [g, 0]));
+        const byLevel = new Map();
+        for (const g of col) {
+            const lv = level.get(g) || 0;
+            if (!byLevel.has(lv)) byLevel.set(lv, []);
+            byLevel.get(lv).push(g);
+        }
+        for (const lv of [...byLevel.keys()].sort((a, b) => a - b)) {
+            const lvGroups = byLevel.get(lv);
+            lvGroups.sort((a, b) => wfGroupBox(a)[1] - wfGroupBox(b)[1] || wfGroupBox(a)[0] - wfGroupBox(b)[0]);
+            columns.push(lvGroups);
+        }
+    }
+
+    if (bridgeTwoPass) {
+        columns = wfChainColumns(data, pipeline, columns, groupByNode);
+    }
+
+    let cursorX = originX;
+    for (const levelGroups of columns) {
+        let levelWidth = 0;
+        let cursorY = topY;
+        for (const g of levelGroups) {
+            const bounding = wfTidyGroup(data, g, [cursorX, cursorY], assignment.get(g));
+            cursorY = bounding[1] + bounding[3] + PAD;
+            levelWidth = Math.max(levelWidth, bounding[2]);
+        }
+        cursorX += levelWidth + PAD;
+    }
+
+    if (other.length) {
+        let cursorY = topY;
+        for (const g of other) {
+            const bounding = wfTidyGroup(data, g, [cursorX, cursorY], assignment.get(g));
+            cursorY = bounding[1] + bounding[3] + PAD;
+        }
+    }
+
+    groups.forEach((g, idx) => {
+        const stage = g._stage || WF_OTHER;
+        delete g._stage;
+        const members = assignment.get(g) || [];
+        const color = wfGroupColorFor(stage, g, members);
+        if (typeof g.id !== "string" || !g.id.startsWith("evmg_")) {
+            g.id = `evmg_${stage.toLowerCase()}_${idx + 1}`;
+        }
+        g.color = color;
+        g.titleColor = color;
+        g.bodyColor = color;
+        g.fontSize = DEF_FONT_SIZE;
+        g._colorMigratedV2 = true;
+        delete g.bounding;
+        delete g.flags;
+        delete g.titleAlpha;
+        delete g.bodyAlpha;
+
+        if (paint && stage !== WF_AUX && stage !== WF_OTHER) {
+            report.repainted += wfPaintNodes(data, g, stage, members);
+        }
+        if (addOpt) {
+            const centralM = members.filter(n => n.type !== "GetNode" && n.type !== "SetNode");
+            const poolM = centralM.length ? centralM : members;
+            if (poolM.length && !wfOptionalSuffix(g)) {
+                const bypassed = poolM.filter(n => n.mode === 4).length;
+                if (bypassed / poolM.length >= 0.6) {
+                    g.title = wfMarkOptional(g.title);
+                    report.optional_marked.push(g.title);
+                }
+            }
+        }
+    });
+
+    const assignedIds = new Set();
+    for (const list of assignment.values()) {
+        for (const n of list) assignedIds.add(Number(n.id));
+    }
+
+    if (helpersTop) {
+        const allBoxes = wfGetGroups(data).map(g => wfGroupBox(g));
+        const shelfTop = allBoxes.length ? Math.min(...allBoxes.map(b => b[1])) : originY;
+        wfPlaceHelpersTop(data, assignedIds, originX, shelfTop);
+    }
+
+    if (Array.isArray(data.nodes)) {
+        const prio = (n) => {
+            const t = String(n?.type || "");
+            if (t === "SetNode") return 0;
+            if (t === "GetNode") return 1;
+            if (t === "ImpactSwitch" || t === "LatentSwitch" || t === "SEGSSwitch") return 3;
+            return 2;
+        };
+        data.nodes.sort((a, b) => prio(a) - prio(b));
+    }
+
+    report.ungrouped = (data.nodes || []).filter(
+        n => !assignedIds.has(Number(n.id)) && !WF_HELPER_TYPES.has(String(n.type))
+    );
+    wfSetGroups(data, groups);
+    report.groups = groups.length;
+    return report;
+}
+
+function wfRunOrganizerInJs(data, options = {}) {
+    const hasGroups = (
+        (Array.isArray(data?.groups) && data.groups.length > 0) ||
+        (Array.isArray(data?.extra?.evmGroups) && data.extra.evmGroups.length > 0) ||
+        (Array.isArray(data?.extra?.pixaromaGroups) && data.extra.pixaromaGroups.length > 0)
+    );
+    const mode = String(options.mode || "auto").toLowerCase();
+    let regroup = false;
+    let adopt = false;
+    if (mode === "regroup") {
+        regroup = true;
+    } else if (mode === "adopt") {
+        regroup = !hasGroups;
+        adopt = hasGroups;
+    } else if (mode === "existing") {
+        regroup = false;
+        adopt = false;
+    } else {
+        regroup = !hasGroups;
+        adopt = hasGroups;
+    }
+    if ("regroup" in options) regroup = Boolean(options.regroup);
+    if ("adopt" in options) adopt = Boolean(options.adopt);
+
+    const pass1 = wfLayoutOnce(data, { ...options, regroup, adopt });
+    const pass2 = wfLayoutOnce(data, { ...options, regroup: false, adopt: false });
+
+    return {
+        groups: pass2.groups,
+        converted_evm: pass1.converted_evm,
+        reroutes_removed: (pass1.reroutes_removed || 0) + (pass2.reroutes_removed || 0),
+        regrouped: pass1.regrouped,
+        adopted: pass1.adopted,
+        set_created: (pass1.set_created || 0) + (pass2.set_created || 0),
+        get_created: (pass1.get_created || 0) + (pass2.get_created || 0),
+        repainted: Math.max(pass1.repainted || 0, pass2.repainted || 0),
+        optional_marked: [...new Set([...(pass1.optional_marked || []), ...(pass2.optional_marked || [])])],
+        dropped: [...(pass1.dropped || []), ...(pass2.dropped || [])],
+        ungrouped_count: (pass2.ungrouped || []).length,
+    };
+}
+
+function applySerializedWorkflowInPlace(gr, data, preserveView = true) {
+    if (!gr || !data) return;
+    const prevScale = app.canvas?.ds?.scale;
+    const prevOffset = app.canvas?.ds?.offset
+        ? [app.canvas.ds.offset[0], app.canvas.ds.offset[1]]
+        : null;
+
+    gr.configure(data);
+
+    // Sincroniza SetNode / GetNode recém-criados (KJNodes)
+    const allNodes = gr._nodes || [];
+    for (const n of allNodes) {
+        if (n && n.type === "SetNode") {
+            try { n.onRename?.(); } catch (_e) {}
+            try { n.update?.(); } catch (_e) {}
+        }
+    }
+    for (const n of allNodes) {
+        if (n && n.type === "GetNode") {
+            try { n.onRename?.(); } catch (_e) {}
+            try { n.update?.(); } catch (_e) {}
+        }
+    }
+
+    // Garante que widgets DOM customizados respeitem a altura mínima renderizada no navegador
+    const groups = [...ensureEvmGroups(gr)].sort((a, b) => (a.x - b.x) || (a.y - b.y));
+    for (const g of groups) {
+        ensureDockArrays(g);
+        const cNodes = getCentralMemberNodes(g, gr);
+        for (const cn of cNodes) {
+            if (!cn.flags?.collapsed && typeof cn.computeSize === "function" && cn.size) {
+                try {
+                    const minSz = cn.computeSize();
+                    if (Array.isArray(minSz) && minSz[1] > cn.size[1]) {
+                        cn.size[1] = snapUp(minSz[1]);
+                    }
+                } catch (_e) {}
+            }
+        }
+        tidyGroupCentralNodes(g, gr, cNodes);
+        syncGroupLayoutSignature(g, gr, cNodes);
+    }
+
+    if (preserveView && app.canvas?.ds) {
+        if (typeof prevScale === "number" && Number.isFinite(prevScale)) {
+            app.canvas.ds.scale = prevScale;
+        }
+        if (prevOffset) {
+            app.canvas.ds.offset[0] = prevOffset[0];
+            app.canvas.ds.offset[1] = prevOffset[1];
+        }
+    }
+
+    invalidateHidden();
+    updateHideCSS();
+    markChanged();
+    repaint();
+}
+
+function organizeCurrentWorkflow(options = {}) {
+    if (_organizeBusy) return;
+    const gr = curGraph();
+    if (!gr) return;
+
+    const snapshot = gr.serialize();
+    if (!snapshot || !Array.isArray(snapshot.nodes) || !snapshot.nodes.length) {
+        toast("Organizar Workflow", "O canvas atual não possui nós para organizar.");
+        return;
+    }
+
+    _organizeBusy = true;
+    try {
+        const undoCopy = JSON.parse(JSON.stringify(snapshot));
+        const workData = JSON.parse(JSON.stringify(snapshot));
+
+        const rep = wfRunOrganizerInJs(workData, options);
+
+        _organizeUndoStack.push(undoCopy);
+        if (_organizeUndoStack.length > 10) _organizeUndoStack.shift();
+
+        applySerializedWorkflowInPlace(gr, workData, options.keep_origin !== false);
+
+        const parts = [`${rep.groups ?? 0} grupos`];
+        if (rep.set_created || rep.get_created) {
+            parts.push(`+${rep.set_created || 0} Set / +${rep.get_created || 0} Get`);
+        }
+        if (Array.isArray(rep.adopted) && rep.adopted.length) {
+            const totalAdopted = rep.adopted.reduce((acc, it) => acc + (Number(it.count) || 0), 0);
+            if (totalAdopted > 0) parts.push(`${totalAdopted} adotados`);
+        }
+        if (rep.repainted) {
+            parts.push(`${rep.repainted} pintados`);
+        }
+        toast("⚡ Workflow Organizado", parts.join(" • "));
+        console.info("[ComfyUI-EVM-Advanced-Group] Relatório de organização (100% JS):", rep);
+    } catch (err) {
+        console.error("[ComfyUI-EVM-Advanced-Group] Falha ao organizar workflow:", err);
+        toast("Erro ao organizar workflow", String(err?.message || err));
+    } finally {
+        _organizeBusy = false;
+    }
+}
+
+function undoLastWorkflowOrganize() {
+    const gr = curGraph();
+    if (!gr || !_organizeUndoStack.length) {
+        toast("Desfazer Organização", "Nenhum estado anterior disponível.");
+        return;
+    }
+    const prev = _organizeUndoStack.pop();
+    applySerializedWorkflowInPlace(gr, prev, true);
+    toast("↩️ Organização Revertida", "O layout anterior do workflow foi restaurado.");
+}
+
 // ── Definições da Tela de Configurações Nativa do ComfyUI (⚡ EVM Group) ──────
 const COLOR_OPTIONS_MAP = {
     "Pale Blue (Padrão ComfyUI)": "#3f789e",
@@ -4653,10 +7177,62 @@ app.registerExtension({
         const overEvm = p ? evmGroupAt(p) : null;
         const overPix = (!overEvm && p && window.PixaromaPixGroup?.groupAt) ? window.PixaromaPixGroup.groupAt(p) : null;
 
+        const organizeSubmenu = [
+            {
+                content: "⚡ Organizar Completo (Auto + Set/Get)",
+                callback: () => organizeCurrentWorkflow({ mode: "auto", wire_set_get: true, paint: true }),
+            },
+            {
+                content: "📐 Organizar Grupos Existentes (Manter Soltos)",
+                callback: () => organizeCurrentWorkflow({ mode: "existing", wire_set_get: true, paint: true }),
+            },
+            {
+                content: "🧲 Organizar + Adotar Nós Soltos (--adopt)",
+                callback: () => organizeCurrentWorkflow({ mode: "adopt", wire_set_get: true, paint: true }),
+            },
+            {
+                content: "🔄 Reagrupar Tudo do Zero (--regroup)",
+                callback: () => organizeCurrentWorkflow({ mode: "regroup", wire_set_get: true, paint: true }),
+            },
+            {
+                content: "🔗 Organizar Sem Criar Set/Get (--no-wire-set-get)",
+                callback: () => organizeCurrentWorkflow({ mode: "auto", wire_set_get: false, paint: true }),
+            },
+            {
+                content: "🎨 Organizar Sem Alterar Cores (--no-paint)",
+                callback: () => organizeCurrentWorkflow({ mode: "auto", wire_set_get: true, paint: false }),
+            },
+        ];
+
+        if (_organizeUndoStack.length > 0) {
+            organizeSubmenu.push(
+                null,
+                {
+                    content: "↩️ Desfazer Última Organização",
+                    callback: () => undoLastWorkflowOrganize(),
+                }
+            );
+        }
+
         const items = [
             null,
             { content: "⚡ Add EVM Group (Set/Get)", callback: () => createEvmGroup(p) },
+            {
+                content: "🪄 Organizar Workflow (Padrão Dj Edu)",
+                has_submenu: true,
+                submenu: {
+                    title: "Organizar Workflow",
+                    options: organizeSubmenu,
+                },
+            },
         ];
+
+        if (_organizeUndoStack.length > 0) {
+            items.push({
+                content: "↩️ Desfazer Última Organização",
+                callback: () => undoLastWorkflowOrganize(),
+            });
+        }
 
         if (overPix) {
             items.push({
@@ -4844,6 +7420,8 @@ app.registerExtension({
             getAllGroups: ensureEvmGroups,
             getMemberNodes: groupMemberNodes,
             groupAt: evmGroupAt,
+            organizeWorkflow: organizeCurrentWorkflow,
+            undoOrganizeWorkflow: undoLastWorkflowOrganize,
             repaint,
         };
         window.EVMAdvancedGroup = window.EVMGroupSetGet;
