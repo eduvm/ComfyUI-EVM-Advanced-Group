@@ -6442,7 +6442,291 @@ const EVM_SETTINGS_DEFS = [
 ];
 
 // ── Integração com a Selection Toolbox Nativa e Barra Flutuante Própria ─────
+const EVM_RESIZE_TOOLBOX_CMD = "evm.selectionToolbox.resize";
 const EVM_GROUP_TOOLBOX_CMD = "evm.selectionToolbox.evmGroup";
+
+const EVM_SVG_EQUAL_WIDTH = `<svg viewBox="0 0 32 32" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect x="9" y="9" width="14" height="6" rx="1" ry="1" fill="currentColor"/>
+    <rect x="11" y="19" width="10" height="6" rx="1" ry="1" fill="currentColor"/>
+    <rect x="4" y="4" width="2" height="24" rx="1" fill="currentColor"/>
+    <rect x="26" y="4" width="2" height="24" rx="1" fill="currentColor"/>
+    <rect x="4" y="21" width="5" height="2" rx="1" fill="currentColor"/>
+    <rect x="23" y="21" width="5" height="2" rx="1" fill="currentColor"/>
+</svg>`;
+
+const EVM_SVG_EQUAL_HEIGHT = `<svg viewBox="0 0 32 32" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <rect x="18" y="9" width="6" height="14" rx="1" ry="1" fill="currentColor"/>
+    <rect x="8" y="11" width="6" height="10" rx="1" ry="1" fill="currentColor"/>
+    <rect x="4" y="4" width="24" height="2" rx="1" fill="currentColor"/>
+    <rect x="4" y="26" width="24" height="2" rx="1" fill="currentColor"/>
+    <rect x="10" y="4" width="2" height="5" rx="1" fill="currentColor"/>
+    <rect x="10" y="23" width="2" height="5" rx="1" fill="currentColor"/>
+</svg>`;
+
+let _evmResizePopoverEl = null;
+
+function getResizeableSelectedNodes() {
+    const gr = curGraph();
+    if (!gr || !app.canvas) return [];
+    const seen = new Set();
+    const rawList = [];
+    const hiddenSet = hiddenMaps().hidden;
+
+    const addNode = (n) => {
+        if (!n || typeof n !== "object" || n.id == null || !n.pos || !n.size) return;
+        const sid = String(n.id);
+        if (seen.has(sid)) return;
+        if (!Array.isArray(gr._nodes) || !gr._nodes.includes(n)) return;
+        if (n.type === "Reroute" || n.type === "Reroute (rgthree)") return;
+        if (n.properties?.__denoVisualFold && n.properties.__denoVisualFold.index !== 0) return;
+        if (hiddenSet.has(sid)) return;
+        seen.add(sid);
+        rawList.push(n);
+    };
+
+    if (app.canvas.selected_nodes && typeof app.canvas.selected_nodes === "object") {
+        const vals = Array.isArray(app.canvas.selected_nodes)
+            ? app.canvas.selected_nodes
+            : Object.values(app.canvas.selected_nodes);
+        for (const n of vals) addNode(n);
+    }
+    if (app.canvas.selectedItems && typeof app.canvas.selectedItems[Symbol.iterator] === "function") {
+        for (const it of app.canvas.selectedItems) addNode(it);
+    }
+    for (const n of (gr._nodes || [])) {
+        if (n?.selected) addNode(n);
+    }
+
+    // Se houver 2 ou mais nós regulares (não SetNode/GetNode) selecionados, ignora SetNode/GetNode
+    // para que seleções amplas por caixa (marquee) dentro de um EVM Group igualem todos os nós
+    // centrais (mesmo > 3 nós) sem serem afetadas pelos SetNode/GetNode ancorados nas laterais.
+    const regularNodes = rawList.filter(n => n.type !== "SetNode" && n.type !== "GetNode");
+    if (regularNodes.length >= 2) return regularNodes;
+    return rawList;
+}
+
+function getResizeableSelectedNativeGroups() {
+    const gr = curGraph();
+    if (!gr || !app.canvas) return [];
+    const groups = gr._groups || gr.groups || [];
+    if (!Array.isArray(groups)) return [];
+    const out = [];
+    const addG = (g) => {
+        if (g && groups.includes(g) && !out.includes(g)) out.push(g);
+    };
+    if (app.canvas.selectedItems && typeof app.canvas.selectedItems[Symbol.iterator] === "function") {
+        for (const it of app.canvas.selectedItems) addG(it);
+    }
+    addG(app.canvas.selected_group);
+    addG(app.canvas.selectedGroup);
+    for (const g of groups) {
+        if (g?.selected) addG(g);
+    }
+    return out;
+}
+
+function canResizeCurrentSelection() {
+    if (getResizeableSelectedNodes().length >= 2) return true;
+    if (getSelectedEvmGroups().length >= 2) return true;
+    if (getResizeableSelectedNativeGroups().length >= 2) return true;
+    return false;
+}
+
+function runEvmEqualizeSize(mode) {
+    hideEvmResizePopover();
+    const gr = curGraph();
+    if (!gr || !app.canvas) return;
+
+    const isWidth = mode === "width";
+    const axis = isWidth ? 0 : 1;
+
+    // 1. Prioridade para nós selecionados (>= 2 nós, sem qualquer limite máximo de quantidade!)
+    const selNodes = getResizeableSelectedNodes();
+    if (selNodes.length >= 2) {
+        const activeNodes = selNodes.filter(n => !n.flags?.collapsed);
+        const targetList = activeNodes.length >= 2 ? activeNodes : selNodes;
+        const validSizes = targetList
+            .map(n => Number(n.size?.[axis] || 0))
+            .filter(v => Number.isFinite(v) && v > 0);
+        if (!validSizes.length) return;
+
+        const maxSize = snapUp(Math.max(...validSizes));
+        const resizedSet = new Set();
+
+        for (const n of targetList) {
+            const curW = Number(n.size?.[0] || 140);
+            const curH = Number(n.size?.[1] || 60);
+            const nextW = isWidth ? maxSize : curW;
+            const nextH = isWidth ? curH : maxSize;
+
+            if (typeof n.setSize === "function") {
+                try { n.setSize([nextW, nextH]); } catch (_e) {}
+            }
+            if (isVueNodes()) {
+                n.size = [nextW, nextH];
+            } else if (n.size) {
+                n.size[0] = nextW;
+                n.size[1] = nextH;
+            } else {
+                n.size = [nextW, nextH];
+            }
+            n._evmPrevW = Math.round(nextW);
+            n._evmPrevBodyH = Math.round(nextH);
+            try { n.onResize?.(n.size); } catch (_e) {}
+            resizedSet.add(n);
+        }
+
+        // Atualiza e faz reflow automático dos EVM Groups que contenham os nós redimensionados
+        for (const g of ensureEvmGroups(gr)) {
+            if (!g || g.folded) continue;
+            const cNodes = getCentralMemberNodes(g, gr);
+            if (cNodes.some(cn => resizedSet.has(cn))) {
+                tidyGroupCentralNodes(g, gr, cNodes);
+                syncGroupLayoutSignature(g, gr, cNodes);
+            }
+        }
+
+        markChanged();
+        return;
+    }
+
+    // 2. Se não houver >= 2 nós selecionados, verifica >= 2 EVM Groups selecionados
+    const evmGroups = getSelectedEvmGroups().filter(g => g && !g.folded);
+    if (evmGroups.length >= 2) {
+        if (isWidth) {
+            const maxW = snapUp(Math.max(...evmGroups.map(g => Number(g.w || 0))));
+            for (const g of evmGroups) {
+                const prevBounds = { x: g.x, y: g.y, w: g.w, h: g.h };
+                g.w = Math.max(minGroupWidth(g), maxW);
+                layoutDockedNodes(g, gr, { prevBounds });
+            }
+        } else {
+            const maxH = snapUp(Math.max(...evmGroups.map(g => Number(g.h || 0))));
+            for (const g of evmGroups) {
+                const prevBounds = { x: g.x, y: g.y, w: g.w, h: g.h };
+                g.h = Math.max(MIN_GROUP_H, maxH);
+                layoutDockedNodes(g, gr, { prevBounds });
+            }
+        }
+        markChanged();
+        return;
+    }
+
+    // 3. Fallback: >= 2 Grupos Nativos do ComfyUI selecionados
+    const natGroups = getResizeableSelectedNativeGroups();
+    if (natGroups.length >= 2) {
+        const getGSize = (g) => {
+            const b = g.boundingRect || g._bounding || g.bounding;
+            if (b && b.length >= 4) return [Number(b[2] || 0), Number(b[3] || 0)];
+            const s = g.size || g._size || [0, 0];
+            return [Number(s[0] || 0), Number(s[1] || 0)];
+        };
+        const maxVal = Math.max(...natGroups.map(g => getGSize(g)[axis]));
+        if (Number.isFinite(maxVal) && maxVal > 0) {
+            for (const g of natGroups) {
+                const b = g.boundingRect || g._bounding || g.bounding;
+                if (b && b.length >= 4) b[axis + 2] = maxVal;
+                if (g.size && g.size.length >= 2) g.size[axis] = maxVal;
+                if (g._size && g._size.length >= 2) g._size[axis] = maxVal;
+            }
+            markChanged();
+        }
+    }
+}
+
+function ensureEvmResizePopover() {
+    if (_evmResizePopoverEl || typeof document === "undefined") return _evmResizePopoverEl;
+    _evmResizePopoverEl = document.createElement("div");
+    _evmResizePopoverEl.id = "evm-resize-popover-menu";
+    _evmResizePopoverEl.className = "evm-resize-popover-menu";
+    _evmResizePopoverEl.setAttribute("role", "menu");
+    _evmResizePopoverEl.innerHTML = `
+        <button type="button" class="evm-resize-popover-item" data-resize-mode="width" title="Igualar Largura (Horizontal) pelo maior selecionado">
+            <span class="evm-resize-popover-icon">${EVM_SVG_EQUAL_WIDTH}</span>
+            <span>Horizontal</span>
+        </button>
+        <button type="button" class="evm-resize-popover-item" data-resize-mode="height" title="Igualar Altura (Vertical) pelo maior selecionado">
+            <span class="evm-resize-popover-icon">${EVM_SVG_EQUAL_HEIGHT}</span>
+            <span>Vertical</span>
+        </button>
+    `;
+
+    for (const btn of _evmResizePopoverEl.querySelectorAll(".evm-resize-popover-item")) {
+        btn.addEventListener("pointerdown", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+        });
+        btn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const mode = btn.getAttribute("data-resize-mode");
+            if (mode) runEvmEqualizeSize(mode);
+        });
+    }
+
+    document.body.appendChild(_evmResizePopoverEl);
+
+    document.addEventListener("pointerdown", (ev) => {
+        if (!_evmResizePopoverEl || _evmResizePopoverEl.style.display === "none") return;
+        if (_evmResizePopoverEl.contains(ev.target)) return;
+        if (ev.target?.closest?.("button:has(.evm-toolbox-resize-pill-icon), #evm-group-floating-bar .evm-btn-resize")) return;
+        hideEvmResizePopover();
+    }, true);
+
+    window.addEventListener("resize", hideEvmResizePopover, { passive: true });
+    return _evmResizePopoverEl;
+}
+
+function hideEvmResizePopover() {
+    if (_evmResizePopoverEl) {
+        _evmResizePopoverEl.style.display = "none";
+    }
+}
+
+function showEvmResizePopover(anchorEl = null) {
+    const menu = ensureEvmResizePopover();
+    if (!menu) return;
+
+    // Fecha o menu Align do Deno se estiver aberto ao lado
+    const denoAlignMenu = document.querySelector(".deno-visual-align-menu");
+    if (denoAlignMenu && denoAlignMenu.style.display !== "none") {
+        denoAlignMenu.style.display = "none";
+    }
+
+    const btnEl = anchorEl ||
+        document.querySelector("button:has(.evm-toolbox-resize-pill-icon)") ||
+        document.querySelector("#evm-group-floating-bar .evm-btn-resize");
+
+    menu.style.display = "grid";
+    const menuRect = menu.getBoundingClientRect();
+    const menuW = menuRect.width || 224;
+    const menuH = menuRect.height || 48;
+
+    let left = window.innerWidth / 2 - menuW / 2;
+    let top = 80;
+
+    if (btnEl) {
+        const r = btnEl.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+            left = r.left + r.width / 2 - menuW / 2;
+            top = r.bottom + 8;
+        }
+    }
+
+    left = Math.max(8, Math.min(window.innerWidth - menuW - 8, Math.round(left)));
+    top = Math.max(8, Math.min(window.innerHeight - menuH - 8, Math.round(top)));
+
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+}
+
+function toggleEvmResizePopover(anchorEl = null) {
+    if (_evmResizePopoverEl && _evmResizePopoverEl.style.display === "grid") {
+        hideEvmResizePopover();
+    } else {
+        showEvmResizePopover(anchorEl);
+    }
+}
 
 function triggerCreateOrConvertFromSelection() {
     if (!app.canvas) return;
@@ -6494,6 +6778,104 @@ function initEvmGroupFloatingBar() {
         const style = document.createElement("style");
         style.id = styleId;
         style.textContent = `
+            .evm-toolbox-resize-pill-icon {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 48px;
+                height: 22px;
+                box-sizing: border-box;
+                padding: 0 8px;
+                border: 1px solid rgba(72, 255, 132, 0.86);
+                border-radius: 999px;
+                background: rgba(5, 30, 14, 0.98);
+                color: #dfffe8;
+                font: 900 12px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                font-style: normal;
+                letter-spacing: 0;
+                white-space: nowrap;
+                box-shadow: 0 0 0 1px rgba(72, 255, 132, 0.12) inset;
+            }
+            .evm-toolbox-resize-pill-icon::before {
+                content: "Resize";
+            }
+            button:has(.evm-toolbox-resize-pill-icon) {
+                overflow: visible;
+                position: relative;
+            }
+            button:has(.evm-toolbox-resize-pill-icon):hover .evm-toolbox-resize-pill-icon {
+                border-color: rgba(126, 255, 166, 0.96);
+                background: rgba(22, 90, 44, 0.98);
+                color: #ffffff;
+            }
+            button:has(.evm-toolbox-resize-pill-icon):hover::after {
+                content: "Equalize width or height";
+                position: absolute;
+                left: 50%;
+                bottom: calc(100% + 9px);
+                z-index: 10050;
+                transform: translateX(-50%);
+                padding: 5px 8px;
+                border: 1px solid rgba(126, 255, 166, 0.74);
+                border-radius: 8px;
+                background: rgba(3, 10, 7, 0.98);
+                color: #dfffe8;
+                font: 800 11px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                white-space: nowrap;
+                pointer-events: none;
+                box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42);
+            }
+
+            .evm-resize-popover-menu {
+                position: fixed;
+                z-index: 100002;
+                display: none;
+                width: 228px;
+                grid-template-columns: 1fr 1fr;
+                gap: 6px;
+                padding: 8px;
+                border: 1px solid rgba(82, 255, 145, 0.82);
+                border-radius: 10px;
+                background: rgba(4, 13, 8, 0.98);
+                box-shadow: 0 16px 36px rgba(0, 0, 0, 0.46), 0 0 0 1px rgba(82, 255, 145, 0.10) inset;
+                box-sizing: border-box;
+                user-select: none;
+            }
+            .evm-resize-popover-item {
+                display: flex;
+                align-items: center;
+                justify-content: flex-start;
+                gap: 7px;
+                min-height: 32px;
+                padding: 0 9px;
+                border: 1px solid rgba(90, 130, 104, 0.72);
+                border-radius: 8px;
+                background: rgba(9, 13, 11, 0.92);
+                color: #dfffe8;
+                cursor: pointer;
+                font: 700 11.5px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                text-align: left;
+                white-space: nowrap;
+                transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+            }
+            .evm-resize-popover-item:hover {
+                background: rgba(27, 118, 62, 0.98);
+                border-color: rgba(110, 255, 165, 0.96);
+                color: #ffffff;
+            }
+            .evm-resize-popover-icon {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 18px;
+                height: 18px;
+                color: #74ff9f;
+                flex-shrink: 0;
+            }
+            .evm-resize-popover-item:hover .evm-resize-popover-icon {
+                color: #ffffff;
+            }
+
             .evm-toolbox-group-pill-icon {
                 display: inline-flex;
                 align-items: center;
@@ -6637,12 +7019,14 @@ function initEvmGroupFloatingBar() {
                 background: rgba(14, 78, 120, 0.98);
                 color: #ffffff;
             }
-            #evm-group-floating-bar .evm-pill-fold {
+            #evm-group-floating-bar .evm-pill-fold,
+            #evm-group-floating-bar .evm-pill-resize {
                 border: 1px solid rgba(72, 255, 132, 0.86);
                 background: rgba(5, 30, 14, 0.98);
                 color: #dfffe8;
             }
-            #evm-group-floating-bar .evm-pill-fold:hover {
+            #evm-group-floating-bar .evm-pill-fold:hover,
+            #evm-group-floating-bar .evm-pill-resize:hover {
                 background: rgba(22, 90, 44, 0.98);
                 color: #ffffff;
             }
@@ -6691,6 +7075,9 @@ function initEvmGroupFloatingBar() {
         </button>
         <button class="evm-tb-pill evm-pill-fold evm-btn-fold" title="Recolher / Expandir EVM Group">
             <span>Fold</span>
+        </button>
+        <button class="evm-tb-pill evm-pill-resize evm-btn-resize" style="display:none;" title="Igualar Tamanho (Horizontal / Vertical)">
+            <span>Resize</span>
         </button>
         <button class="evm-tb-pill evm-pill-evmgroup evm-btn-convert" title="Converter para EVM Group (Set/Get)">
             <span>EVM Group</span>
@@ -6837,6 +7224,7 @@ function initEvmGroupFloatingBar() {
         const btnConvert = floatingBar.querySelector(".evm-btn-convert");
         const btnColors = floatingBar.querySelector(".evm-btn-colors");
         const btnFold = floatingBar.querySelector(".evm-btn-fold");
+        const btnResize = floatingBar.querySelector(".evm-btn-resize");
         const btnDelete = floatingBar.querySelector(".evm-btn-delete");
 
         if (btnSave) btnSave.style.display = hasScreenshotSupport ? "inline-flex" : "none";
@@ -6859,6 +7247,12 @@ function initEvmGroupFloatingBar() {
             } else {
                 btnFold.style.display = "none";
             }
+        }
+
+        if (btnResize) {
+            const canResizeGroups = target.type === "evmgroup" && Array.isArray(target.targets) && target.targets.length >= 2;
+            const canResizeNodes = getResizeableSelectedNodes().length >= 2;
+            btnResize.style.display = (canResizeGroups || canResizeNodes) ? "inline-flex" : "none";
         }
 
         floatingBar.style.display = "flex";
@@ -6919,6 +7313,11 @@ function initEvmGroupFloatingBar() {
             for (const g of list) toggleFoldEvmGroup(g);
             setTimeout(updateGroupFloatingBar, 30);
         }
+    });
+
+    floatingBar.querySelector(".evm-btn-resize")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleEvmResizePopover(e.currentTarget);
     });
 
     floatingBar.querySelector(".evm-btn-delete")?.addEventListener("click", (e) => {
@@ -7028,11 +7427,23 @@ function initEvmGroupFloatingBar() {
     }
 
     window.addEventListener("click", (e) => {
+        const alignBtn = e.target?.closest?.("#hNodeAlignKit button");
+        if (alignBtn) {
+            const btnId = alignBtn.id || "";
+            if (btnId === "hBtnI_equalWidth" || btnId === "hBtnJ_equalHeight") {
+                if (canResizeCurrentSelection()) {
+                    e.stopImmediatePropagation();
+                    e.preventDefault();
+                    runEvmEqualizeSize(btnId === "hBtnI_equalWidth" ? "width" : "height");
+                    return;
+                }
+            }
+        }
+
         const evmGroups = getSelectedEvmGroups();
         if (!evmGroups.length) return;
 
         // 1. Integração direta com a barra EasyKit NodeAlignPro (#hNodeAlignKit)
-        const alignBtn = e.target?.closest?.("#hNodeAlignKit button");
         if (alignBtn) {
             const btnId = alignBtn.id || "";
             const hasNativeSelected = !!(
@@ -7150,6 +7561,13 @@ app.registerExtension({
     settings: EVM_SETTINGS_DEFS,
     commands: [
         {
+            id: EVM_RESIZE_TOOLBOX_CMD,
+            label: "Resize selection (Equal Width / Equal Height)",
+            tooltip: "Equalize width or height",
+            icon: "evm-toolbox-resize-pill-icon",
+            function: () => toggleEvmResizePopover(),
+        },
+        {
             id: EVM_GROUP_TOOLBOX_CMD,
             label: "Create or convert to EVM Advanced Group (Set/Get)",
             tooltip: "Criar / Converter para EVM Advanced Group (GetNode / SetNode)",
@@ -7166,7 +7584,12 @@ app.registerExtension({
             (app.canvas.selectedItems && [...app.canvas.selectedItems].some(it => it && (it._nodes || it.isGroup || (it.pos && it.size && !it.widgets && !it.inputs && !it.outputs && !it.id))))
         );
         if (hasNodes || hasNativeGroup) {
-            return [EVM_GROUP_TOOLBOX_CMD];
+            const cmds = [];
+            if (canResizeCurrentSelection()) {
+                cmds.push(EVM_RESIZE_TOOLBOX_CMD);
+            }
+            cmds.push(EVM_GROUP_TOOLBOX_CMD);
+            return cmds;
         }
         return [];
     },
@@ -7422,6 +7845,7 @@ app.registerExtension({
             groupAt: evmGroupAt,
             organizeWorkflow: organizeCurrentWorkflow,
             undoOrganizeWorkflow: undoLastWorkflowOrganize,
+            resizeSelection: runEvmEqualizeSize,
             repaint,
         };
         window.EVMAdvancedGroup = window.EVMGroupSetGet;
