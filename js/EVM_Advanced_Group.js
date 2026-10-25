@@ -3906,10 +3906,7 @@ function wfHasAudioHint(group, nodes) {
     return (nodes || []).some(n => markers.some(m => String(n?.type || "").includes(m)));
 }
 
-function wfGroupColorFor(stage, group, nodes) {
-    if (stage === "INPUT" && wfHasAudioHint(group, nodes)) {
-        return WF_AUDIO_GROUP_COLOR;
-    }
+function wfGroupColorFor(stage, _group, _nodes) {
     const raw = (WF_PALETTE[stage] || WF_PALETTE.OTHER).group || "#3f789e";
     return normalizeHex(raw, "#3f789e");
 }
@@ -6443,7 +6440,111 @@ const EVM_SETTINGS_DEFS = [
 
 // ── Integração com a Selection Toolbox Nativa e Barra Flutuante Própria ─────
 const EVM_RESIZE_TOOLBOX_CMD = "evm.selectionToolbox.resize";
+const EVM_CLEAR_COLOR_TOOLBOX_CMD = "evm.selectionToolbox.clearColor";
 const EVM_GROUP_TOOLBOX_CMD = "evm.selectionToolbox.evmGroup";
+
+function clearSelectionColors() {
+    const gr = curGraph();
+    if (!gr || !app.canvas) return;
+    let changed = false;
+
+    const clearNodeColor = (n) => {
+        if (!n || typeof n !== "object") return;
+        if (n.color !== undefined || n.bgcolor !== undefined) {
+            delete n.color;
+            delete n.bgcolor;
+            changed = true;
+        }
+    };
+
+    // 1. Limpa cores dos nós diretamente selecionados
+    if (app.canvas.selected_nodes && typeof app.canvas.selected_nodes === "object") {
+        const vals = Array.isArray(app.canvas.selected_nodes)
+            ? app.canvas.selected_nodes
+            : Object.values(app.canvas.selected_nodes);
+        for (const n of vals) clearNodeColor(n);
+    }
+    if (app.canvas.selectedItems && typeof app.canvas.selectedItems[Symbol.iterator] === "function") {
+        for (const it of app.canvas.selectedItems) {
+            if (it && it.id != null && it.pos && it.size) clearNodeColor(it);
+        }
+    }
+    for (const n of (gr._nodes || [])) {
+        if (n?.selected) clearNodeColor(n);
+    }
+
+    // 2. Limpa cores de EVM Groups selecionados (grupo + nós internos)
+    const evmGroups = getSelectedEvmGroups();
+    for (const g of evmGroups) {
+        if (!g) continue;
+        setEvmGroupColor(g, null);
+        for (const n of groupMemberNodes(g)) clearNodeColor(n);
+        changed = true;
+    }
+
+    // 3. Limpa cores de Grupos Nativos selecionados (grupo + nós internos)
+    const natGroups = getResizeableSelectedNativeGroups();
+    for (const g of natGroups) {
+        if (!g) continue;
+        g.color = DEFAULT_GROUP_COLOR;
+        try { g.recomputeInsideNodes?.(); } catch (_e) {}
+        const inside = g._nodes || g.nodes || [];
+        if (Array.isArray(inside) && inside.length) {
+            for (const n of inside) clearNodeColor(n);
+        } else {
+            const b = g.boundingRect || g._bounding || g.bounding;
+            const pos = b ? [b[0], b[1]] : (g._pos || g.pos || [0, 0]);
+            const sz = b ? [b[2], b[3]] : (g._size || g.size || [0, 0]);
+            for (const n of (gr._nodes || [])) {
+                if (!n || !n.pos) continue;
+                const vb = nodeVisualBounds(n);
+                const cx = vb.x + vb.w / 2;
+                const cy = vb.y + vb.h / 2;
+                if (cx >= pos[0] && cx <= pos[0] + sz[0] && cy >= pos[1] && cy <= pos[1] + sz[1]) {
+                    clearNodeColor(n);
+                }
+            }
+        }
+        changed = true;
+    }
+
+    // 4. Limpa cores de Pixaroma Groups selecionados (grupo + nós internos)
+    let pixGroups = [];
+    if (window.PixaromaPixGroup) {
+        try {
+            const pgs = window.PixaromaPixGroup.getSelectedGroups?.() || [];
+            if (pgs.length) pixGroups.push(...pgs);
+            else {
+                const pg = window.PixaromaPixGroup.getSelected?.();
+                if (pg) pixGroups.push(pg);
+            }
+        } catch (_e) {}
+    }
+    if (!pixGroups.length && Array.isArray(gr.extra?.pixaromaGroups)) {
+        pixGroups = gr.extra.pixaromaGroups.filter(g => g && (g.selected || g._selected));
+    }
+    for (const pg of pixGroups) {
+        pg.color = DEFAULT_GROUP_COLOR;
+        pg.titleColor = DEFAULT_GROUP_COLOR;
+        pg.bodyColor = DEFAULT_GROUP_COLOR;
+        for (const n of (gr._nodes || [])) {
+            if (!n || !n.pos) continue;
+            const vb = nodeVisualBounds(n);
+            const cx = vb.x + vb.w / 2;
+            const cy = vb.y + vb.h / 2;
+            if (cx >= pg.x && cx <= pg.x + pg.w && cy >= pg.y && cy <= pg.y + pg.h) {
+                clearNodeColor(n);
+            }
+        }
+        window.PixaromaPixGroup?.repaint?.();
+        changed = true;
+    }
+
+    if (changed) {
+        markChanged();
+        repaint();
+    }
+}
 
 const EVM_SVG_EQUAL_WIDTH = `<svg viewBox="0 0 32 32" width="18" height="18" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <rect x="9" y="9" width="14" height="6" rx="1" ry="1" fill="currentColor"/>
@@ -6876,6 +6977,53 @@ function initEvmGroupFloatingBar() {
                 color: #ffffff;
             }
 
+            .evm-toolbox-clear-color-pill-icon {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 22px;
+                height: 22px;
+                box-sizing: border-box;
+                border: 1.5px solid rgba(255, 255, 255, 0.38);
+                border-radius: 999px;
+                background: rgba(24, 24, 27, 0.96);
+                color: #f87171;
+                font: 900 13px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                font-style: normal;
+                white-space: nowrap;
+                transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+            }
+            .evm-toolbox-clear-color-pill-icon::before {
+                content: "✕";
+            }
+            button:has(.evm-toolbox-clear-color-pill-icon) {
+                overflow: visible;
+                position: relative;
+            }
+            button:has(.evm-toolbox-clear-color-pill-icon):hover .evm-toolbox-clear-color-pill-icon {
+                border-color: rgba(248, 113, 113, 0.95);
+                background: rgba(69, 10, 10, 0.96);
+                color: #fca5a5;
+                transform: scale(1.08);
+            }
+            button:has(.evm-toolbox-clear-color-pill-icon):hover::after {
+                content: "Limpar cores";
+                position: absolute;
+                left: 50%;
+                bottom: calc(100% + 9px);
+                z-index: 10050;
+                transform: translateX(-50%);
+                padding: 5px 8px;
+                border: 1px solid rgba(248, 113, 113, 0.74);
+                border-radius: 8px;
+                background: rgba(15, 5, 5, 0.98);
+                color: #fecaca;
+                font: 800 11px/1.2 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                white-space: nowrap;
+                pointer-events: none;
+                box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42);
+            }
+
             .evm-toolbox-group-pill-icon {
                 display: inline-flex;
                 align-items: center;
@@ -6951,6 +7099,26 @@ function initEvmGroupFloatingBar() {
                 background: #3f789e;
                 border: 1px solid rgba(255, 255, 255, 0.35);
                 box-sizing: border-box;
+            }
+            #evm-group-floating-bar .evm-clear-color-dot {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 18px;
+                height: 18px;
+                border-radius: 999px;
+                border: 1.5px solid rgba(255, 255, 255, 0.38);
+                background: rgba(24, 24, 27, 0.96);
+                color: #f87171;
+                font: 900 11px/1 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                box-sizing: border-box;
+                transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+            }
+            #evm-group-floating-bar .evm-btn-clear-color:hover .evm-clear-color-dot {
+                border-color: rgba(248, 113, 113, 0.95);
+                background: rgba(69, 10, 10, 0.96);
+                color: #fca5a5;
+                transform: scale(1.1);
             }
             #evm-group-floating-bar .evm-comfy-color-strip {
                 position: absolute;
@@ -7063,6 +7231,9 @@ function initEvmGroupFloatingBar() {
             </button>
             <div class="evm-comfy-color-strip" style="display:none;"></div>
         </div>
+        <button class="evm-tb-icon-btn evm-btn-clear-color" title="Limpar Cores (Grupo e Nós Internos)">
+            <span class="evm-clear-color-dot">✕</span>
+        </button>
         <button class="evm-tb-icon-btn evm-btn-delete" title="Excluir Grupo (mantém nós)">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
         </button>
@@ -7304,6 +7475,13 @@ function initEvmGroupFloatingBar() {
         } else {
             closeColorStrip();
         }
+    });
+
+    floatingBar.querySelector(".evm-btn-clear-color")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        clearSelectionColors();
+        if (colorCircleEl) colorCircleEl.style.background = DEFAULT_GROUP_COLOR;
+        closeColorStrip();
     });
 
     floatingBar.querySelector(".evm-btn-fold")?.addEventListener("click", (e) => {
@@ -7561,6 +7739,13 @@ app.registerExtension({
     settings: EVM_SETTINGS_DEFS,
     commands: [
         {
+            id: EVM_CLEAR_COLOR_TOOLBOX_CMD,
+            label: "Clear colors of selected nodes and groups",
+            tooltip: "Limpar cores dos nós/grupos selecionados",
+            icon: "evm-toolbox-clear-color-pill-icon",
+            function: () => clearSelectionColors(),
+        },
+        {
             id: EVM_RESIZE_TOOLBOX_CMD,
             label: "Resize selection (Equal Width / Equal Height)",
             tooltip: "Equalize width or height",
@@ -7584,7 +7769,7 @@ app.registerExtension({
             (app.canvas.selectedItems && [...app.canvas.selectedItems].some(it => it && (it._nodes || it.isGroup || (it.pos && it.size && !it.widgets && !it.inputs && !it.outputs && !it.id))))
         );
         if (hasNodes || hasNativeGroup) {
-            const cmds = [];
+            const cmds = [EVM_CLEAR_COLOR_TOOLBOX_CMD];
             if (canResizeCurrentSelection()) {
                 cmds.push(EVM_RESIZE_TOOLBOX_CMD);
             }
@@ -7694,6 +7879,18 @@ app.registerExtension({
                     submenu: {
                         title: "Group Color",
                         options: colorOptions,
+                    },
+                },
+                {
+                    content: "🧹 Limpar Cores do Grupo e Nós",
+                    callback: () => {
+                        setEvmGroupColor(overEvm, null);
+                        for (const n of groupMemberNodes(overEvm)) {
+                            delete n.color;
+                            delete n.bgcolor;
+                        }
+                        markChanged();
+                        repaint();
                     },
                 },
                 {
@@ -7846,6 +8043,7 @@ app.registerExtension({
             organizeWorkflow: organizeCurrentWorkflow,
             undoOrganizeWorkflow: undoLastWorkflowOrganize,
             resizeSelection: runEvmEqualizeSize,
+            clearColors: clearSelectionColors,
             repaint,
         };
         window.EVMAdvancedGroup = window.EVMGroupSetGet;
