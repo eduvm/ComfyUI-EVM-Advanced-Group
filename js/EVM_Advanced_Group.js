@@ -6047,18 +6047,24 @@ function applySerializedWorkflowInPlace(gr, data, preserveView = true) {
 
     gr.configure(data);
 
-    // Sincroniza SetNode / GetNode recém-criados (KJNodes)
+    // Sincroniza SetNode / GetNode recém-criados (KJNodes) preservando as cores do grupo
     const allNodes = gr._nodes || [];
     for (const n of allNodes) {
         if (n && n.type === "SetNode") {
+            const c = n.color, bg = n.bgcolor;
             try { n.onRename?.(); } catch (_e) {}
             try { n.update?.(); } catch (_e) {}
+            if (c) n.color = c;
+            if (bg) n.bgcolor = bg;
         }
     }
     for (const n of allNodes) {
         if (n && n.type === "GetNode") {
+            const c = n.color, bg = n.bgcolor;
             try { n.onRename?.(); } catch (_e) {}
             try { n.update?.(); } catch (_e) {}
+            if (c) n.color = c;
+            if (bg) n.bgcolor = bg;
         }
     }
 
@@ -6119,6 +6125,12 @@ function organizeCurrentWorkflow(options = {}) {
         if (_organizeUndoStack.length > 10) _organizeUndoStack.shift();
 
         applySerializedWorkflowInPlace(gr, workData, options.keep_origin !== false);
+
+        if (options.paint !== false && window.EVMColorPalette?.autoColorWorkflow) {
+            try {
+                window.EVMColorPalette.autoColorWorkflow();
+            } catch (_e) {}
+        }
 
         const parts = [`${rep.groups ?? 0} grupos`];
         if (rep.set_created || rep.get_created) {
