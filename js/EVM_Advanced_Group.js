@@ -306,6 +306,15 @@ let _hotBtn = null;
 let _drag = null;
 let _carry = null;
 let _lmbDown = false;
+function isNodeDragging() {
+    const c = app.canvas;
+    // Se um nó estiver sendo redimensionado pelo usuário (resize handle), NÃO é movimento/translação
+    if (c?.resizing_node) return false;
+    if (_drag || _carry) return true;
+    if (_lmbDown) return true;
+    if (c && (c.node_dragged || c.node_moving || c.selected_group_moving || c.dragging_canvas)) return true;
+    return false;
+}
 let _clickDeselectPending = false;
 let _pendingEvmSelect = null;
 let _pendingBodyAdditiveToggle = null;
@@ -630,6 +639,11 @@ function getCentralMemberNodes(g, graph) {
     const out = [];
     for (const n of (gr._nodes || [])) {
         if (!n || !n.pos) continue;
+        // GetNode e SetNode NUNCA são nós centrais de grupos EVM (ou estão ancorados nos trilhos, ou soltos fora)
+        if (n.type === "GetNode" || n.type === "SetNode") {
+            if (n._evmLastGroupId) delete n._evmLastGroupId;
+            continue;
+        }
         if (allDockedSet.has(String(n.id))) continue;
         if (!isResizingGroup && n._evmLastGroupId && validGroupIds.has(n._evmLastGroupId)) {
             if (n._evmLastGroupId === g.id) {
@@ -642,6 +656,8 @@ function getCentralMemberNodes(g, graph) {
         const cy = b.y + b.h / 2;
         const centerInGroup = (cx >= g.x && cx <= g.x + g.w && cy >= g.y && cy <= g.y + g.h);
         if (centerInGroup) {
+            // Se o mouse estiver pressionado ou houver arraste em andamento, nós em trânsito não são adotados
+            if (isNodeDragging()) continue;
             n._evmLastGroupId = g.id;
             out.push(n);
         } else if (isResizingGroup && n._evmLastGroupId === g.id) {
@@ -1420,8 +1436,9 @@ function syncGroupLayoutSignature(g, graph, explicitCentralNodes = null) {
  * Monitora alterações de estado maximizado/minimizado (collapse) ou tamanho (horizontal e vertical)
  * dos nós dentro de cada EVM Group e faz reflow imediato para que o grupo e os nós acompanhem em tempo real.
  */
-function checkAndReflowGroupIfNeeded(g, graph) {
-    if (!EVM_CFG.autoReflow || !g || g.folded || _drag || _carry || app.canvas?.dragging_rectangle) return;
+function checkAndReflowGroupIfNeeded(g, graph, opts = {}) {
+    const isResizing = !!(opts.isResizing || opts.resizingNode || app.canvas?.resizing_node);
+    if (!EVM_CFG.autoReflow || !g || g.folded || (isNodeDragging() && !isResizing) || app.canvas?.dragging_rectangle) return;
     const gr = graph || curGraph();
     if (!gr || isGraphConfiguring(gr)) return;
     ensureDockArrays(g);
@@ -1429,7 +1446,7 @@ function checkAndReflowGroupIfNeeded(g, graph) {
     const getNodes = resolveNodeList(gr, g.getNodeIds);
     const setNodes = resolveNodeList(gr, g.setNodeIds);
     const centralNodes = getCentralMemberNodes(g, gr);
-    const resizingNode = app.canvas?.resizing_node;
+    const resizingNode = opts.resizingNode || app.canvas?.resizing_node;
 
     // Gera assinatura de estado (collapsed, largura, altura, título e posição durante resize) dos nós do grupo
     let sig = `${g.leftRailOpen}:${g.rightRailOpen}|`;
@@ -1773,6 +1790,11 @@ function containedNodes(g) {
             continue;
         }
         if (otherDockedSet.has(sid)) continue;
+        // GetNode e SetNode só pertencem ao grupo se estiverem ancorados nele (ownDockedSet)
+        if (n.type === "GetNode" || n.type === "SetNode") {
+            if (n._evmLastGroupId) delete n._evmLastGroupId;
+            continue;
+        }
         if (n._evmLastGroupId && validGroupIds.has(n._evmLastGroupId)) {
             if (n._evmLastGroupId === g.id) {
                 out.push(n);
@@ -1782,6 +1804,7 @@ function containedNodes(g) {
         const b = nodeVisualBounds(n);
         const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
         if (cx >= g.x && cx <= g.x + g.w && cy >= g.y && cy <= g.y + g.h) {
+            if (isNodeDragging()) continue;
             n._evmLastGroupId = g.id;
             out.push(n);
         }
@@ -3162,7 +3185,31 @@ function onGlobalPointerUp(e) {
     const gs = ensureEvmGroups(graph);
     if (!gs.length) return;
 
-    const selNodes = app.canvas?.selected_nodes ? Object.values(app.canvas.selected_nodes).filter(Boolean) : [];
+    const selNodes = [];
+    const seenNodeIds = new Set();
+    const collectNode = (n) => {
+        if (!n || typeof n !== "object" || n.id == null) return;
+        const sid = String(n.id);
+        if (seenNodeIds.has(sid)) return;
+        seenNodeIds.add(sid);
+        selNodes.push(n);
+    };
+
+    if (app.canvas?.selected_nodes && typeof app.canvas.selected_nodes === "object") {
+        const vals = Array.isArray(app.canvas.selected_nodes)
+            ? app.canvas.selected_nodes
+            : Object.values(app.canvas.selected_nodes);
+        for (const n of vals) collectNode(n);
+    }
+    if (app.canvas?.selectedItems && typeof app.canvas.selectedItems[Symbol.iterator] === "function") {
+        for (const it of app.canvas.selectedItems) collectNode(it);
+    }
+    if (app.canvas?.node_dragged) collectNode(app.canvas.node_dragged);
+    if (app.canvas?.current_node) collectNode(app.canvas.current_node);
+    for (const n of (graph._nodes || [])) {
+        if (n?.selected) collectNode(n);
+    }
+
     let changed = false;
 
     for (const n of selNodes) {
@@ -3173,15 +3220,21 @@ function onGlobalPointerUp(e) {
 
         if (ownerInfo) {
             const og = ownerInfo.group;
-            if (!inRect(og, [cx, cy])) {
-                if (ownerInfo.side === "left") {
-                    og.getNodeIds = og.getNodeIds.filter(id => String(id) !== String(n.id));
-                } else {
-                    og.setNodeIds = og.setNodeIds.filter(id => String(id) !== String(n.id));
-                }
-                layoutDockedNodes(og, graph, { shrinkHeightToFit: true });
-                changed = true;
+            ensureDockArrays(og);
+            let stillInRail = false;
+            if (ownerInfo.side === "left") {
+                const lW = leftRailW(og);
+                const railX0 = og.x;
+                const railX1 = og.x + lW;
+                stillInRail = (lW > 0 && cx >= railX0 - 20 && cx <= railX1 + 25 && cy >= og.y && cy <= og.y + og.h);
             } else {
+                const rW = rightRailW(og);
+                const railX0 = og.x + og.w - rW;
+                const railX1 = og.x + og.w;
+                stillInRail = (rW > 0 && cx >= railX0 - 25 && cx <= railX1 + 20 && cy >= og.y && cy <= og.y + og.h);
+            }
+
+            if (stillInRail) {
                 if (ownerInfo.side === "left") {
                     const nodes = resolveNodeList(graph, og.getNodeIds);
                     nodes.sort((a, b2) => a.pos[1] - b2.pos[1]);
@@ -3193,6 +3246,37 @@ function onGlobalPointerUp(e) {
                 }
                 layoutDockedNodes(og, graph, { shrinkHeightToFit: true });
                 changed = true;
+            } else {
+                if (ownerInfo.side === "left") {
+                    og.getNodeIds = og.getNodeIds.filter(id => String(id) !== String(n.id));
+                } else {
+                    og.setNodeIds = og.setNodeIds.filter(id => String(id) !== String(n.id));
+                }
+                delete n._evmLastGroupId;
+                layoutDockedNodes(og, graph, { shrinkHeightToFit: true });
+                changed = true;
+
+                // Verifica se foi solto no trilho de outro grupo (ou trilho oposto) para ancorar
+                const targetG = evmGroupAt([cx, cy]);
+                if (targetG && !targetG.folded) {
+                    ensureDockArrays(targetG);
+                    const lW = leftRailW(targetG);
+                    const rW = rightRailW(targetG);
+                    if (n.type === "GetNode" && lW > 0 && cx <= targetG.x + lW + 25 && cy >= targetG.y && cy <= targetG.y + targetG.h) {
+                        if (!targetG.getNodeIds.some(id => String(id) === String(n.id))) {
+                            targetG.getNodeIds.push(n.id);
+                            layoutDockedNodes(targetG, graph, { shrinkHeightToFit: true });
+                        }
+                    } else if (n.type === "SetNode" && rW > 0 && cx >= targetG.x + targetG.w - rW - 25 && cy >= targetG.y && cy <= targetG.y + targetG.h) {
+                        if (!targetG.setNodeIds.some(id => String(id) === String(n.id))) {
+                            targetG.setNodeIds.push(n.id);
+                            if (!n.widgets?.[0]?.value || n.widgets[0].value === "*") {
+                                applyGroupNamingToSetNode(n, targetG);
+                            }
+                            layoutDockedNodes(targetG, graph, { shrinkHeightToFit: true });
+                        }
+                    }
+                }
             }
         } else {
             const targetG = evmGroupAt([cx, cy]);
@@ -3200,17 +3284,21 @@ function onGlobalPointerUp(e) {
                 ensureDockArrays(targetG);
                 const lW = leftRailW(targetG);
                 const rW = rightRailW(targetG);
-                if (n.type === "GetNode" && lW > 0 && cx <= targetG.x + lW + 25) {
-                    targetG.getNodeIds.push(n.id);
-                    layoutDockedNodes(targetG, graph, { shrinkHeightToFit: true });
-                    changed = true;
-                } else if (n.type === "SetNode" && rW > 0 && cx >= targetG.x + targetG.w - rW - 25) {
-                    targetG.setNodeIds.push(n.id);
-                    if (!n.widgets?.[0]?.value || n.widgets[0].value === "*") {
-                        applyGroupNamingToSetNode(n, targetG);
+                if (n.type === "GetNode" && lW > 0 && cx <= targetG.x + lW + 25 && cy >= targetG.y && cy <= targetG.y + targetG.h) {
+                    if (!targetG.getNodeIds.some(id => String(id) === String(n.id))) {
+                        targetG.getNodeIds.push(n.id);
+                        layoutDockedNodes(targetG, graph, { shrinkHeightToFit: true });
+                        changed = true;
                     }
-                    layoutDockedNodes(targetG, graph, { shrinkHeightToFit: true });
-                    changed = true;
+                } else if (n.type === "SetNode" && rW > 0 && cx >= targetG.x + targetG.w - rW - 25 && cy >= targetG.y && cy <= targetG.y + targetG.h) {
+                    if (!targetG.setNodeIds.some(id => String(id) === String(n.id))) {
+                        targetG.setNodeIds.push(n.id);
+                        if (!n.widgets?.[0]?.value || n.widgets[0].value === "*") {
+                            applyGroupNamingToSetNode(n, targetG);
+                        }
+                        layoutDockedNodes(targetG, graph, { shrinkHeightToFit: true });
+                        changed = true;
+                    }
                 }
             }
         }
@@ -3240,7 +3328,7 @@ function onGlobalPointerUp(e) {
             }
         }
         for (const tg of groupsToRefresh) {
-            layoutDockedNodes(tg, graph);
+            layoutDockedNodes(tg, graph, { shrinkHeightToFit: true });
             changed = true;
         }
     }
@@ -3253,6 +3341,10 @@ function onGlobalPointerUp(e) {
 
 let _cursorOverride = false;
 function onHoverMove(e) {
+    if (e) {
+        if ((e.buttons & 1) === 1) _lmbDown = true;
+        else if (e.buttons === 0 && _lmbDown) _lmbDown = false;
+    }
     if (_drag) return;
     const el = app.canvas?.canvas;
     if (!el) return;
@@ -3451,7 +3543,7 @@ function installNodeCollapseAndResizeHooks() {
             if (isGraphConfiguring(graph)) return res;
             for (const g of ensureEvmGroups(graph)) {
                 if (!g.folded) {
-                    checkAndReflowGroupIfNeeded(g, graph);
+                    checkAndReflowGroupIfNeeded(g, graph, { isResizing: true, resizingNode: this });
                 }
             }
         } catch (_e) {}
