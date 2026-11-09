@@ -3733,11 +3733,14 @@ const WF_STAGES = [
     "INPUT",
     "PROMPT",
     "PROMPT_EXPANSION",
+    "RESOLUTION",
     "SETTINGS",
     "CONDITION",
     "SAMPLING",
     "REFINE",
     "UPSCALE",
+    "POST_PROCESS",
+    "PREVIEW",
     "OUTPUT",
 ];
 const WF_AUX = "AUX";
@@ -3745,20 +3748,23 @@ const WF_OTHER = "OTHER";
 
 const WF_PALETTE = {
     NOTES:            { group: "#000000", node: "#222222", bg: "#000000" },
-    MODELS:           { group: "#613583", node: "#481c6a", bg: "#613583" },
-    INPUT:            { group: "#8888aa", node: "#223",    bg: "#335" },
-    PROMPT:           { group: "#2b652b", node: "#124c12", bg: "#2b652b" },
-    PROMPT_EXPANSION: { group: "#189164", node: "#189164", bg: "#22342e" },
-    SETTINGS:         { group: "#3f789e", node: "#1b4669", bg: "#29699c" },
-    CONDITION:        { group: "#cfa62a", node: "#cfa62a", bg: "#3e3825" },
-    SAMPLING:         { group: "#3c3c83", node: "#23236a", bg: "#3c3c83" },
-    REFINE:           { group: "#248382", node: "#0b6a69", bg: "#248382" },
-    UPSCALE:          { group: "#246283", node: "#0b496a", bg: "#246283" },
-    OUTPUT:           { group: "#631e1e", node: "#4a0505", bg: "#631e1e" },
-    AUX:              { group: "#444444", node: null,      bg: null },
-    OTHER:            { group: "#3f789e", node: "#1b4669", bg: "#29699c" },
+    MODELS:           { group: "#8847d6", node: "#481c6a", bg: "#613583" },
+    INPUT:            { group: "#159e83", node: "#0d594a", bg: "#147864" },
+    PROMPT:           { group: "#2ca032", node: "#17591b", bg: "#227a27" },
+    PROMPT_EXPANSION: { group: "#82b319", node: "#46630b", bg: "#5e8512" },
+    RESOLUTION:       { group: "#226fd6", node: "#133f7a", bg: "#1c58a6" },
+    SETTINGS:         { group: "#de6b1f", node: "#7a370c", bg: "#a34c14" },
+    CONDITION:        { group: "#d4ad24", node: "#735c0e", bg: "#997b17" },
+    SAMPLING:         { group: "#d4269d", node: "#731254", bg: "#9c1c73" },
+    UPSCALE:          { group: "#129ec4", node: "#0a576e", bg: "#107794" },
+    REFINE:           { group: "#4648cc", node: "#252673", bg: "#343699" },
+    POST_PROCESS:     { group: "#a64468", node: "#5c2237", bg: "#7d314d" },
+    PREVIEW:          { group: "#8f6f40", node: "#4f3c20", bg: "#6e542e" },
+    OUTPUT:           { group: "#c4232e", node: "#590d13", bg: "#801820" },
+    AUX:              { group: "#54687a", node: "#2c3742", bg: "#3d4c5c" },
+    OTHER:            { group: "#54687a", node: "#2c3742", bg: "#3d4c5c" },
 };
-const WF_AUDIO_GROUP_COLOR = "#ffffff";
+const WF_AUDIO_GROUP_COLOR = "#159e83";
 
 const WF_ADOPT_TITLES = {
     NOTES: "Notes",
@@ -3766,52 +3772,63 @@ const WF_ADOPT_TITLES = {
     INPUT: "Input",
     PROMPT: "Prompt",
     PROMPT_EXPANSION: "Prompt Expansion",
-    SETTINGS: "Size - Seed - Steps",
+    RESOLUTION: "Resolution - Duration",
+    SETTINGS: "Seed - Steps",
     CONDITION: "Condition",
     SAMPLING: "Sampling",
     REFINE: "Refine",
     UPSCALE: "Upscale",
+    POST_PROCESS: "Post-Process - OPT",
+    PREVIEW: "Preview",
     OUTPUT: "Output",
     OTHER: "Outros",
 };
 
 const WF_GROUP_RULES = [
     ["NOTES",            /\bnotas?\b|\bnotes?\b|markdown\s*notes?|note\s*plus|pixaroma\s*note|\binfo(rma[çc][õo]es)?\b|instru[çc][õo]es|instructions?|readme|how\s*to(\s*use)?|como\s*usar|documenta[çc][ãa]o|documentation/i],
-    ["UPSCALE",          /upscal|seedvr|interpolat|latent upscale/i],
-    ["OUTPUT",           /output|save|export|render|combine|merge|composite|montagem|aplica|t[ií]tulo|\bnome\b|logo|stitch|overlay|watermark|\bcta\b/i],
-    ["PROMPT_EXPANSION", /prompt expansion|expans[ãa]o de prompt/i],
-    ["PROMPT",           /^\s*(\d+[\.\-\s]*)?prompt\b|prompt\s*\(|prompt generation|text encode/i],
-    ["CONDITION",        /condition\b|conditioning/i],
-    ["REFINE",           /detailer|refine|\bface\b|hand|mouth|\beye|foot|fidelity|\bnag\b|remove background|background/i],
-    ["SAMPLING",         /sampl|decod|guider|noise|scheduler|sigmas|latent|generate|first pass|second pass|\bpass\b|1st pass|2nd pass/i],
-    ["MODELS",           /model|loader|load models?|lora|\bclip\b|\bvae\b|checkpoint|unet|attention|patch|gguf|\bdit\b|zimage|krea|qwen image|load early/i],
-    ["PROMPT",           /prompt|instruction|enhanc|style|lyrics|texto|\btext\b/i],
-    ["SETTINGS",         /\bsizes?\b|resolution|\bseed\b|steps|length|lenght|setting|options|aspect|empty latent|frames|dura[çc][ãa]o/i],
-    ["INPUT",            /input|reference|\bref\b|imagem|image|carrega|frames|audio|voice|voz|music|custom audio|guides|controlnet|personagem|g[eê]nero|thumbnail|capa|foto/i],
-    ["AUX",              /fast groups|bypass|clear (mem|ram)|memory|performance|timer|compare|settings? da|seletor geral|number conversion|utility|debug|\bstats\b/i],
+    ["AUX",              /fast groups|bypass|clear\s*(mem|ram|vram)|memory|performance|render\s*time|timer|\bstats\b|\busage\b|notify|notification|settings?\s+da|seletor\s+geral|number\s+conversion|utility|debug/i],
+    ["PREVIEW",          /^\s*previews?\s*(override)?(\s*[-–—(]\s*(opt|opcional|optional)\)?)?\s*$|\bmodel\s*preview\b|\bimage\s*comparer\b|\bcomparer?\b/i],
+    ["POST_PROCESS",     /extra\s*sauce|color\s*transfer|color\s*grad|detail\s*tone|finishing|post[\s\-]*process|remove\s*background|film\s*grain|\blut\b/i],
+    ["UPSCALE",          /upscal|seed[vb]r|interpolat|latent\s*upscale/i],
+    ["OUTPUT",           /output|save|export|(?<!re-)(?<!re0)\brender\b(?!\s*time)|combine|merge|composite|montagem|aplica|t[ií]tulo|\bnome\b|logo|stitch|overlay|watermark|\bcta\b|\beditor\b|concatenate\s*videos/i],
+    ["PROMPT_EXPANSION", /prompt\s*expansion|expans[ãa]o\s*de\s*prompt|prompt\s*enhanc|enhance\s*prompt|prompt\s*generation\s*using|llama\s*prompt/i],
+    ["PROMPT",           /^\s*(\d+[\.\-\s]*)?prompts?\b|prompt\s*\(|prompt\s*generation|text\s*encode/i],
+    ["CONDITION",        /condition\b|conditioning|minimax\s*reference|references?\s*[-–—·]\s*latent|prepare\s*(ltx\s*)?latent|ltx\s*latent|ltx\s*encode|first\s*frame\s*anchor/i],
+    ["REFINE",           /detailer|refine|\bface\b|hand|mouth|\beye|foot|fidelity|\bnag\b|fix\s*blur|find\s*and\s*hold|de-?rope\s*1|d-?rope\s*[-–—:]\s*fix/i],
+    ["MODELS",           /model|loader|load\s*models?|lora|\bclip\b|\bvae\b|checkpoint|unet|attention|patch|gguf|\bdit\b|zimage|krea|qwen\s*image|load\s*early|acceleration|\bflux\b/i],
+    ["RESOLUTION",       /resolution|res\b|largura|altura|\bwidth\b|\bheight\b|\bsizes?\b|aspect|empty\s*latent|frames|durat|dura[çc][ãa]o|\blength\b|\blenght\b|video\s*slice/i],
+    ["SAMPLING",         /sampl|decod|guider|noise|scheduler|sigmas|latent|generate|first\s*pass|second\s*pass|\bpass\b|1st\s*pass|2nd\s*pass|re-?render|re0render|horizontal\s*gen|vertical\s*gen|square\s*gen|fast\s*generation|extend\s*(group|video)|loop\s*extender|\bloop\b/i],
+    ["PROMPT",           /prompt|instruction|enhanc|style|lyrics|texto|\btext\b|\bt2v\b/i],
+    ["SETTINGS",         /\bseed\b|steps|scheduler|sigmas|sampling\s*settings|noise|setting|options|\bspeed\b|\bmotion\b|\bdials?\b|\bcfg\b|configuration|image\s*strength/i],
+    ["INPUT",            /input|reference|\bref\b|imagem|image|carrega|frames|audio|voice|voz|music|custom\s*audio|guides|controlnet|personagem|g[eê]nero|thumbnail|capa|foto|\bload\s+(image|video|audio|last|first)\b|vocal\s*extraction|preprocess|extract\s*end/i],
 ];
 
 const WF_NODE_RULES = [
-    ["NOTES",    /^(Note|MarkdownNote|Note Plus \(mtb\)|PixaromaNote|NoteNode)$|Markdown\s*Note/i],
-    ["UPSCALE",  /SeedVR2|Upscal|RTXVideoSuperResolution|LatentUpscal/i],
-    ["MODELS",   /Loader|Lora|Attention|ModelSampling|CFGNorm|ModelPatch|CheckpointLoader|Power Lora/i],
-    ["REFINE",   /Detailer|H3Face|H3PerFrame|SAMLoader|UltralyticsDetector/i],
-    ["PROMPT",   /CLIPTextEncode|TextEncode|TextGenerate|FluxGuidance|ConditioningZeroOut|ConditioningCombine|ConditioningSet|StringConcatenate|ttN text|ShowText|TextPreview|PrimitiveString/i],
-    ["SETTINGS", /Resolution|Aspect|Output Options|Empty.*Latent|RandomNoise|Scheduler|Sigmas|INTConstant|PrimitiveInt|PrimitiveFloat|PrimitiveBoolean|ttN seed|Calculator|ComfyMathExpression|GetImageSize/i],
-    ["SAMPLING", /KSampler|Sampler|Guider|VAEDecode|VAEEncode|SeparateAVLatent|ConcatAVLatent|ImgToVideoInplace|ImageToVideo|ReferenceToVideo|GenerateMusic|GenerateABC|AudioVAE/i],
-    ["OUTPUT",   /Save|Preview|Image Save|FlowSave|Comparer|Compos|Overlay Text|ConcatMulti|MaskPreview|CreateVideo|VideoCombine/i],
-    ["INPUT",    /LoadImage|LoadAudio|LoadVideo|LoadVideoUpload|ImageScale|ResizeImage|ResizeImages|ReferenceLatent|CropGuides|SetLatentNoiseMask|ImageStitch|SolidMask|TrimAudio|Voice|TTS|VibeVoice|GetVideoComponents/i],
+    ["NOTES",        /^(Note|MarkdownNote|Note Plus \(mtb\)|PixaromaNote|NoteNode)$|Markdown\s*Note/i],
+    ["AUX",          /PixaromaMonitor|PixaromaRunTimer|SystemNotification|RenderTimer/i],
+    ["PREVIEW",      /ModelPreviewOverride|Image Comparer/i],
+    ["POST_PROCESS", /ColorTransfer|VideoFinishDetailTone|RemoveBackground|InspyrenetRembg|BiRefNet/i],
+    ["UPSCALE",      /SeedVR2|Upscal|RTXVideoSuperResolution|LatentUpscal/i],
+    ["MODELS",       /Loader|Lora|Attention|ModelSampling|SigmaShift|MiniMaxH3SigmaShift|CFGNorm|ModelPatch|CheckpointLoader|Power Lora|MolmoH3Encoder/i],
+    ["REFINE",       /Detailer|H3Face|H3PerFrame|SAMLoader|UltralyticsDetector|H3JerkOracle|H3ClockRemap|H3TimeSmear|H3AudioSmear|H3V2VInit|LTX2_NAG/i],
+    ["CONDITION",    /ReferenceToVideo|ImageToVideo|ImgToVideoInplace|ConditioningCombine|ConditioningSet|ConditioningZeroOut|FluxGuidance|SolarRendererConditioning|ReferenceLatent/i],
+    ["PROMPT",       /CLIPTextEncode|TextEncode|TextGenerate|DenoPromptText|StringConcatenate|ttN text|ShowText|TextPreview|PrimitiveString|CustomEditText|PromptMultiStyle|CivitaiPrompt|PromptTemplate|MiniNovelaPrompt/i],
+    ["RESOLUTION",   /Resolution|Aspect|Empty.*Latent|GetImageSize|GetLatentSize|VideoDuration|\bWidth\b|\bHeight\b|MiniMax.*Output Options|EVM MiniMax|LTXOutputOptions|WanOutputOptions/i],
+    ["SETTINGS",     /DialsLoadDial|DialsApplyDial|Cfg Literal|TurboLoraSteps|IntFallbackSwitch|Output Options|INTConstant|PrimitiveInt|PrimitiveFloat|PrimitiveBoolean|ttN seed|Calculator|ComfyMathExpression/i],
+    ["SAMPLING",     /KSampler|Sampler|Guider|VAEDecode|VAEEncode|RandomNoise|BasicScheduler|Scheduler|Sigmas|SeparateAVLatent|ConcatAVLatent|GenerateMusic|GenerateABC|AudioVAE|Drama3Generate|Drama3Decode|H3ExactRecover|H3AudioRecover/i],
+    ["OUTPUT",       /Save|Preview|Image Save|FlowSave|Compos|Overlay Text|ConcatMulti|MaskPreview|CreateVideo|VideoCombine|VHS_PruneOutputs|multiTrackEditor/i],
+    ["INPUT",        /LoadImage|LoadAudio|LoadVideo|LoadVideoUpload|LoadVideoUI|ReferenceImageLoader|ImageScale|ResizeImage|ResizeImages|CropGuides|SetLatentNoiseMask|ImageStitch|SolidMask|TrimAudio|Voice|TTS|VibeVoice|GetVideoComponents|Preprocessor|DWPreprocessor|Openpose|NormalMap|MusicSelector|MusicFlux|MusicPrompt/i],
 ];
 
 const WF_HELPER_TYPES = new Set([
     "Fast Groups Bypasser (rgthree)",
+    "Fast Groups Muter (rgthree)",
+    "Bookmark (rgthree)",
     "Reroute",
     "Reroute (rgthree)",
     "Label (rgthree)",
     "PrimitiveNode",
     "Anything Everywhere",
-    "PixaromaMonitor",
-    "PixaromaRunTimer",
 ]);
 
 const WF_MODEL_LOADER_TYPES = new Set([
@@ -3860,12 +3877,24 @@ function wfStageFromNodeType(nodeType) {
     return WF_OTHER;
 }
 
+const WF_GENERIC_VALUE_TYPES = new Set([
+    "PrimitiveFloat", "PrimitiveInt", "PrimitiveString", "PrimitiveBoolean",
+    "INTConstant", "FloatConstant", "ComfyMathExpression", "Calculator",
+    "PrimitiveNode",
+]);
+
 function wfStageFromNode(node) {
     if (!node || typeof node !== "object") return WF_OTHER;
-    const st = wfStageFromNodeType(node.type);
+    const title = String(node.title || "");
+    const ntype = String(node.type || "");
+    if (title && WF_GENERIC_VALUE_TYPES.has(ntype)) {
+        const stTitle = wfStageFromText(title);
+        if (stTitle !== WF_OTHER) return stTitle;
+    }
+    const st = wfStageFromNodeType(ntype);
     if (st !== WF_OTHER) return st;
-    if (node.title) {
-        const stTitle = wfStageFromText(node.title);
+    if (title) {
+        const stTitle = wfStageFromText(title);
         if (stTitle !== WF_OTHER) return stTitle;
     }
     return WF_OTHER;
@@ -4093,12 +4122,24 @@ function wfClassifyGroup(data, group) {
     if (members.length) {
         const central = members.filter(n => n.type !== "GetNode" && n.type !== "SetNode");
         const pool = central.length ? central : members;
+        if (pool.every(n => wfStageFromNodeType(n.type) === WF_AUX)) {
+            return WF_AUX;
+        }
+        if (pool.every(n => wfStageFromNodeType(n.type) === "PREVIEW")) {
+            return "PREVIEW";
+        }
         const loaderCount = pool.filter(n => wfStageFromNodeType(n.type) === "MODELS").length;
         if (
             loaderCount / pool.length >= 0.7 &&
-            [WF_OTHER, "MODELS", "SAMPLING", "PROMPT", "SETTINGS", "REFINE"].includes(byTitle)
+            [WF_OTHER, "MODELS", "SAMPLING", "PROMPT", "SETTINGS", "REFINE", "UPSCALE"].includes(byTitle)
         ) {
             return "MODELS";
+        }
+        if (byTitle === "SAMPLING" && pool.some(n => wfStageFromNodeType(n.type) === "UPSCALE")) {
+            return "UPSCALE";
+        }
+        if (byTitle === "INPUT" && pool.every(n => wfStageFromNodeType(n.type) === "CONDITION")) {
+            return "CONDITION";
         }
         if (
             byTitle === "MODELS" &&
@@ -4112,7 +4153,7 @@ function wfClassifyGroup(data, group) {
     const votes = new Map();
     for (const n of members) {
         const st = wfStageFromNodeType(n.type);
-        if (st !== WF_OTHER && st !== WF_AUX) {
+        if (st !== WF_OTHER) {
             votes.set(st, (votes.get(st) || 0) + 1);
         }
     }
@@ -4415,6 +4456,25 @@ function wfClassifyNodesByGraph(data) {
             }
             if (feedsUpscale) {
                 stage.set(nid, "SAMPLING");
+                continue;
+            }
+        }
+        if (ntype === "ComfyMathExpression" || ntype === "Calculator") {
+            let feedsDim = false;
+            for (const tid of (dirAdj.get(nid) || [])) {
+                const t = byId.get(tid);
+                if (!t) continue;
+                for (const inp of (t.inputs || [])) {
+                    const iname = String(inp?.name || "").toLowerCase();
+                    if (/length|width|height|duration|frame/.test(iname)) {
+                        feedsDim = true;
+                        break;
+                    }
+                }
+                if (feedsDim) break;
+            }
+            if (feedsDim) {
+                stage.set(nid, "RESOLUTION");
                 continue;
             }
         }
@@ -4995,7 +5055,7 @@ function wfSplitMixedInputOutputGroups(data, groups, assignment) {
                     const lid = inp?.link;
                     return lid != null && linkById.has(Number(lid)) && inputSet.has(Number(linkById.get(Number(lid))[1]));
                 });
-                if (fedByInput && (st === "INPUT" || st === "SETTINGS" || st === WF_OTHER)) {
+                if (fedByInput && (st === "INPUT" || st === "SETTINGS" || st === "RESOLUTION" || st === WF_OTHER)) {
                     inputSet.add(nid);
                     changed = true;
                 }
@@ -6042,7 +6102,7 @@ function wfLayoutOnce(data, opts = {}) {
         delete g.titleAlpha;
         delete g.bodyAlpha;
 
-        if (paint && stage !== WF_AUX && stage !== WF_OTHER) {
+        if (paint && stage !== WF_OTHER) {
             report.repainted += wfPaintNodes(data, g, stage, members);
         }
         if (addOpt) {
