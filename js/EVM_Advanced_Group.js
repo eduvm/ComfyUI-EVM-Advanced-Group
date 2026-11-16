@@ -44,7 +44,7 @@ const EVM_CFG = {
     snapToGrid: true,
     defaultLeftOpen: true,
     defaultRightOpen: true,
-    autoNamingFormat: "<Grupo>_<TIPO>", // "<Grupo>_<TIPO>" | "<TIPO>_<Grupo>" | "Desativado"
+    autoNamingFormat: "group_type", // "group_type" | "type_group" | "off"
     syncRenameOnGroupTitle: true,
     headerBtnVis: "always",             // "always" | "compact" | "hover"
     showLinksWhenFolded: true,
@@ -1511,7 +1511,7 @@ function checkAndReflowGroupIfNeeded(g, graph, opts = {}) {
  */
 function applyGroupNamingToSetNode(setNode, g, typeHint) {
     if (!setNode || !g) return;
-    if (EVM_CFG.autoNamingFormat === "Desativado") {
+    if (EVM_CFG.autoNamingFormat === "off") {
         layoutDockedNodes(g, setNode.graph || curGraph());
         return;
     }
@@ -1523,7 +1523,7 @@ function applyGroupNamingToSetNode(setNode, g, typeHint) {
             ? String(setNode.inputs[0].type).split(",")[0].trim().toUpperCase()
             : "OUT");
 
-    const baseName = EVM_CFG.autoNamingFormat === "<TIPO>_<Grupo>"
+    const baseName = EVM_CFG.autoNamingFormat === "type_group"
         ? `${rawType}_${prefix}`
         : `${prefix}_${rawType}`;
 
@@ -1583,7 +1583,7 @@ function applyGroupNamingToSetNode(setNode, g, typeHint) {
 function syncDockedSetNodesOnGroupRename(g, oldTitle, newTitle) {
     const graph = curGraph();
     if (!graph || !g) return;
-    if (!EVM_CFG.syncRenameOnGroupTitle || EVM_CFG.autoNamingFormat === "Desativado") {
+    if (!EVM_CFG.syncRenameOnGroupTitle || EVM_CFG.autoNamingFormat === "off") {
         layoutDockedNodes(g, graph);
         return;
     }
@@ -1611,7 +1611,7 @@ function syncDockedSetNodesOnGroupRename(g, oldTitle, newTitle) {
             }
         }
 
-        const baseName = EVM_CFG.autoNamingFormat === "<TIPO>_<Grupo>"
+        const baseName = EVM_CFG.autoNamingFormat === "type_group"
             ? `${suffix}_${newPrefix}`
             : `${newPrefix}_${suffix}`;
         let finalName = baseName;
@@ -1662,7 +1662,7 @@ function addDockedGetNode(g) {
 
     const node = window.LiteGraph?.createNode?.("GetNode");
     if (!node) {
-        toast("GetNode indisponível", "Verifique se o pacote KJNodes está ativo.");
+        toast("GetNode unavailable", "Make sure the KJNodes package is installed and enabled.");
         return null;
     }
     graph.add(node);
@@ -1695,7 +1695,7 @@ function addDockedSetNode(g, sourceLinkInfo = null) {
 
     const node = window.LiteGraph?.createNode?.("SetNode");
     if (!node) {
-        toast("SetNode indisponível", "Verifique se o pacote KJNodes está ativo.");
+        toast("SetNode unavailable", "Make sure the KJNodes package is installed and enabled.");
         return null;
     }
     graph.add(node);
@@ -2059,7 +2059,7 @@ function headerButtons(g) {
         btns.unshift({
             key: "toggleRight",
             label: lbl,
-            title: "Mostrar painel SetNode",
+            title: "Show SetNode rail",
             x: rx,
             y: by,
             w: wPill,
@@ -2078,7 +2078,7 @@ function headerButtons(g) {
         btns.push({
             key: "toggleLeft",
             label: lbl,
-            title: "Mostrar painel GetNode",
+            title: "Show GetNode rail",
             x: g.x + 8,
             y: by,
             w: wPill,
@@ -2116,7 +2116,7 @@ function railHeaderButtons(g) {
         out.push({
             key: "toggleLeft",
             label: "◀",
-            title: "Ocultar painel GetNode",
+            title: "Hide GetNode rail",
             x: g.x + 6 + addW + 4,
             y: btnY,
             w: toggleW,
@@ -2132,7 +2132,7 @@ function railHeaderButtons(g) {
         out.push({
             key: "toggleRight",
             label: "▶",
-            title: "Ocultar painel SetNode",
+            title: "Hide SetNode rail",
             x: rx0 + 6,
             y: btnY,
             w: toggleW,
@@ -2432,15 +2432,15 @@ function isGroupOutputNode(n) {
 function queueEvmGroup(g) {
     const outs = groupMemberNodes(g).filter(isGroupOutputNode);
     if (!outs.length) {
-        toast("Nenhum nó de saída neste grupo", "Coloque um nó Save ou Preview dentro do grupo para executar apenas ele.");
+        toast("No output nodes in this group", "Add a Save or Preview node inside the group to run only this group.");
         return;
     }
     const ids = outs.map(n => String(n.id));
     try {
         const r = app.queuePrompt(0, 1, ids);
-        if (r && typeof r.then === "function") r.catch(e => console.error("[EVM Group] Erro ao executar:", e));
+        if (r && typeof r.then === "function") r.catch(e => console.error("[EVM Group] Failed to run group:", e));
     } catch (e) {
-        console.error("[EVM Group] Erro ao executar:", e);
+        console.error("[EVM Group] Failed to run group:", e);
     }
 }
 
@@ -2657,7 +2657,7 @@ function convertPixaromaGroupToEvm(pixGroup) {
     }
     selectEvmGroup(newG);
     markChanged();
-    toast("Convertido para EVM Group", `Grupo "${newG.title}" organizado com margens de 3 quadradinhos.`);
+    toast("Converted to EVM Group", `Group "${newG.title}" tidied with 30px (3 grid cells) margins.`);
     return newG;
 }
 
@@ -2729,7 +2729,7 @@ function convertNativeGroupToEvm(natGrp) {
     }
     selectEvmGroup(newG);
     markChanged();
-    toast("Convertido para EVM Group", `Grupo "${newG.title}" convertido e alinhado à grade.`);
+    toast("Converted to EVM Group", `Group "${newG.title}" converted and snapped to the grid.`);
     return newG;
 }
 
@@ -6262,7 +6262,7 @@ function organizeCurrentWorkflow(options = {}) {
 
     const snapshot = gr.serialize();
     if (!snapshot || !Array.isArray(snapshot.nodes) || !snapshot.nodes.length) {
-        toast("Organizar Workflow", "O canvas atual não possui nós para organizar.");
+        toast("Organize Workflow", "The current canvas has no nodes to organize.");
         return;
     }
 
@@ -6284,22 +6284,22 @@ function organizeCurrentWorkflow(options = {}) {
             } catch (_e) {}
         }
 
-        const parts = [`${rep.groups ?? 0} grupos`];
+        const parts = [`${rep.groups ?? 0} groups`];
         if (rep.set_created || rep.get_created) {
             parts.push(`+${rep.set_created || 0} Set / +${rep.get_created || 0} Get`);
         }
         if (Array.isArray(rep.adopted) && rep.adopted.length) {
             const totalAdopted = rep.adopted.reduce((acc, it) => acc + (Number(it.count) || 0), 0);
-            if (totalAdopted > 0) parts.push(`${totalAdopted} adotados`);
+            if (totalAdopted > 0) parts.push(`${totalAdopted} adopted`);
         }
         if (rep.repainted) {
-            parts.push(`${rep.repainted} pintados`);
+            parts.push(`${rep.repainted} recolored`);
         }
-        toast("⚡ Workflow Organizado", parts.join(" • "));
-        console.info("[ComfyUI-EVM-Advanced-Group] Relatório de organização (100% JS):", rep);
+        toast("⚡ Workflow Organized", parts.join(" • "));
+        console.info("[ComfyUI-EVM-Advanced-Group] Organizer report:", rep);
     } catch (err) {
-        console.error("[ComfyUI-EVM-Advanced-Group] Falha ao organizar workflow:", err);
-        toast("Erro ao organizar workflow", String(err?.message || err));
+        console.error("[ComfyUI-EVM-Advanced-Group] Failed to organize workflow:", err);
+        toast("Failed to organize workflow", String(err?.message || err));
     } finally {
         _organizeBusy = false;
     }
@@ -6308,16 +6308,44 @@ function organizeCurrentWorkflow(options = {}) {
 function undoLastWorkflowOrganize() {
     const gr = curGraph();
     if (!gr || !_organizeUndoStack.length) {
-        toast("Desfazer Organização", "Nenhum estado anterior disponível.");
+        toast("Undo Organize", "No previous layout to restore.");
         return;
     }
     const prev = _organizeUndoStack.pop();
     applySerializedWorkflowInPlace(gr, prev, true);
-    toast("↩️ Organização Revertida", "O layout anterior do workflow foi restaurado.");
+    toast("↩️ Organize Undone", "The previous workflow layout was restored.");
 }
 
-// ── Definições da Tela de Configurações Nativa do ComfyUI (⚡ EVM Group) ──────
-const COLOR_OPTIONS_MAP = {
+// ── Native ComfyUI Settings panel (⚡ EVM Advanced Group) ──────
+const COLOR_OPTIONS = [
+    { text: "Pale Blue (ComfyUI default)", value: "#3f789e" },
+    { text: "Red", value: "#aa8888" },
+    { text: "Brown", value: "#b06634" },
+    { text: "Green", value: "#88aa88" },
+    { text: "Blue", value: "#8888aa" },
+    { text: "Cyan", value: "#88aaaa" },
+    { text: "Purple", value: "#a1309b" },
+    { text: "Yellow", value: "#b58b2a" },
+    { text: "Black", value: "#444444" },
+];
+
+const HEADER_VIS_OPTIONS = [
+    { text: "Always visible (Run, Mute, Bypass, Fold)", value: "always" },
+    { text: "Compact (Fold only)", value: "compact" },
+    { text: "Show extras on hover / selection", value: "hover" },
+];
+
+const NAMING_FORMAT_OPTIONS = [
+    { text: "<Group>_<TYPE>", value: "group_type" },
+    { text: "<TYPE>_<Group>", value: "type_group" },
+    { text: "Off", value: "off" },
+];
+
+// Settings saved by versions <= 2.1.0 stored the Portuguese option labels.
+const LEGACY_SETTING_VALUES = {
+    "<Grupo>_<TIPO>": "group_type",
+    "<TIPO>_<Grupo>": "type_group",
+    "Desativado": "off",
     "Pale Blue (Padrão ComfyUI)": "#3f789e",
     "Red": "#aa8888",
     "Brown": "#b06634",
@@ -6327,24 +6355,22 @@ const COLOR_OPTIONS_MAP = {
     "Purple": "#a1309b",
     "Yellow": "#b58b2a",
     "Black": "#444444",
-};
-
-const HEADER_VIS_MAP = {
     "Sempre visíveis (Run, Mute, Bypass, Fold)": "always",
     "Compacto (apenas Fold)": "compact",
     "Mostrar extras ao passar o mouse / selecionar": "hover",
 };
+const migrateLegacySetting = (val) => LEGACY_SETTING_VALUES[val] ?? val;
 
 const EVM_SETTINGS_DEFS = [
-    // 1. Layout & Grade (Grid = 10px)
+    // 1. Layout & Grid (grid = 10px)
     {
         id: "EVMGroup.Layout.PaddingSquares",
-        name: "Margem interna do grupo (em quadradinhos da grade de 10px)",
+        name: "Group inner padding (in 10px grid cells)",
         type: "slider",
         attrs: { min: 1, max: 8, step: 1 },
         defaultValue: 3,
-        tooltip: "Distância entre as bordas/cabeçalho do grupo e os nodes internos (padrão: 3 quadradinhos = 30px).",
-        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Margem Interna"],
+        tooltip: "Space between the group's borders/header and the nodes inside it (default: 3 cells = 30px).",
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grid", "Inner Padding"],
         onChange: (val) => {
             const sq = Math.max(1, Math.min(10, Number(val) || 3));
             PAD = sq * GRID;
@@ -6354,12 +6380,12 @@ const EVM_SETTINGS_DEFS = [
     },
     {
         id: "EVMGroup.Layout.VerticalGapSquares",
-        name: "Espaçamento vertical entre nodes (em quadradinhos da grade)",
+        name: "Vertical gap between nodes (in grid cells)",
         type: "slider",
         attrs: { min: 1, max: 8, step: 1 },
         defaultValue: 3,
-        tooltip: "Espaço livre vertical entre o fim de um node e o topo da barra de título do node debaixo (padrão: 3 quadradinhos = 30px livres + 30px do título = 60px).",
-        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Gap Vertical"],
+        tooltip: "Free space between the bottom of a node and the title bar of the node below it (default: 3 cells = 30px free + 30px title bar = 60px).",
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grid", "Vertical Gap"],
         onChange: (val) => {
             const sq = Math.max(1, Math.min(10, Number(val) || 3));
             NODE_VGAP = sq * GRID + NODE_TITLE_H;
@@ -6368,12 +6394,12 @@ const EVM_SETTINGS_DEFS = [
     },
     {
         id: "EVMGroup.Layout.HorizontalGapSquares",
-        name: "Espaçamento horizontal entre colunas (em quadradinhos da grade)",
+        name: "Horizontal gap between columns (in grid cells)",
         type: "slider",
         attrs: { min: 1, max: 10, step: 1 },
         defaultValue: 3,
-        tooltip: "Distância horizontal entre colunas de nodes dentro da Área Central do grupo (padrão: 3 quadradinhos = 30px).",
-        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Gap Horizontal"],
+        tooltip: "Horizontal space between node columns in the group's central area (default: 3 cells = 30px).",
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grid", "Horizontal Gap"],
         onChange: (val) => {
             const sq = Math.max(1, Math.min(12, Number(val) || 3));
             NODE_HGAP = sq * GRID;
@@ -6382,12 +6408,12 @@ const EVM_SETTINGS_DEFS = [
     },
     {
         id: "EVMGroup.Layout.ColumnThreshold",
-        name: "Tolerância horizontal para agrupar na mesma coluna (px)",
+        name: "Column detection tolerance (px)",
         type: "slider",
         attrs: { min: 30, max: 240, step: 10 },
         defaultValue: 100,
-        tooltip: "Diferença máxima no eixo X (em pixels) para considerar que dois nodes pertencem à mesma coluna vertical.",
-        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Tolerância de Coluna"],
+        tooltip: "Maximum X-axis difference (in pixels) for two nodes to be treated as part of the same column.",
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grid", "Column Tolerance"],
         onChange: (val) => {
             COL_THRESHOLD = Math.max(20, Number(val) || 100);
             refreshAllGroupsLayout();
@@ -6395,11 +6421,11 @@ const EVM_SETTINGS_DEFS = [
     },
     {
         id: "EVMGroup.Layout.AutoReflow",
-        name: "Auto-Reflow dinâmico ao redimensionar ou minimizar/maximizar nodes",
+        name: "Auto-reflow when nodes are resized or collapsed/expanded",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Quando ativo, redimensionar ou minimizar/maximizar qualquer node reposiciona os vizinhos automaticamente e ajusta o tamanho do grupo em tempo real.",
-        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Auto-Reflow Dinâmico"],
+        tooltip: "When enabled, resizing or collapsing/expanding any node moves its neighbors and resizes the group in real time.",
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grid", "Auto-Reflow"],
         onChange: (val) => {
             EVM_CFG.autoReflow = Boolean(val);
             if (EVM_CFG.autoReflow) refreshAllGroupsLayout();
@@ -6407,59 +6433,59 @@ const EVM_SETTINGS_DEFS = [
     },
     {
         id: "EVMGroup.Layout.PushNeighborsOnExpand",
-        name: "Empurrar grupos vizinhos automaticamente ao expandir (Anti-Colisão)",
+        name: "Push neighboring groups away when a group grows (collision avoidance)",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Quando um grupo cresce lateralmente ou verticalmente (por resize de node, abertura de painel Get/Set, desdobramento ou resize manual), desloca em cascata os grupos vizinhos e todos os seus nodes para evitar sobreposição.",
-        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Anti-Colisão entre Grupos"],
+        tooltip: "When a group grows sideways or downward (node resize, opening a Get/Set rail, unfolding or manual resize), neighboring groups and their nodes are shifted in cascade so nothing overlaps.",
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grid", "Group Collision Avoidance"],
         onChange: (val) => {
             EVM_CFG.pushNeighborsOnExpand = Boolean(val);
         },
     },
     {
         id: "EVMGroup.Layout.SnapToGrid",
-        name: "Alinhar coordenadas automaticamente à grade do ComfyUI (10px)",
+        name: "Snap positions and sizes to the ComfyUI grid (10px)",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Garante que posição e tamanho dos grupos e nodes fiquem alinhados em múltiplos exatos de 10px.",
-        category: ["⚡ EVM Advanced Group", "1. Layout & Grade", "Snap to Grid"],
+        tooltip: "Keeps the position and size of groups and nodes at exact multiples of 10px.",
+        category: ["⚡ EVM Advanced Group", "1. Layout & Grid", "Snap to Grid"],
         onChange: (val) => {
             EVM_CFG.snapToGrid = Boolean(val);
             refreshAllGroupsLayout();
         },
     },
 
-    // 2. Painéis Set / Get
+    // 2. Set / Get rails
     {
         id: "EVMGroup.Rails.DefaultLeftOpen",
-        name: "Iniciar novos grupos com o painel esquerdo (GetNode) aberto",
+        name: "Open the left rail (GetNode) on new groups",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Define se o trilho esquerdo de entrada (GetNode) já vem visível ao criar um novo EVM Advanced Group.",
-        category: ["⚡ EVM Advanced Group", "2. Painéis Set / Get", "Painel Esquerdo (GetNode)"],
+        tooltip: "Whether the left input rail (GetNode) is visible when a new EVM Advanced Group is created.",
+        category: ["⚡ EVM Advanced Group", "2. Set / Get Rails", "Left Rail (GetNode)"],
         onChange: (val) => {
             EVM_CFG.defaultLeftOpen = Boolean(val);
         },
     },
     {
         id: "EVMGroup.Rails.DefaultRightOpen",
-        name: "Iniciar novos grupos com o painel direito (SetNode) aberto",
+        name: "Open the right rail (SetNode) on new groups",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Define se o trilho direito de saída (SetNode) já vem visível ao criar um novo EVM Advanced Group.",
-        category: ["⚡ EVM Advanced Group", "2. Painéis Set / Get", "Painel Direito (SetNode)"],
+        tooltip: "Whether the right output rail (SetNode) is visible when a new EVM Advanced Group is created.",
+        category: ["⚡ EVM Advanced Group", "2. Set / Get Rails", "Right Rail (SetNode)"],
         onChange: (val) => {
             EVM_CFG.defaultRightOpen = Boolean(val);
         },
     },
     {
         id: "EVMGroup.Rails.MinRailInnerWidth",
-        name: "Largura interna mínima dos painéis Set/Get (px)",
+        name: "Minimum inner width of the Set/Get rails (px)",
         type: "slider",
         attrs: { min: 100, max: 260, step: 10 },
         defaultValue: 140,
-        tooltip: "Largura mínima útil do painel lateral quando vazio ou com nomes curtos (o painel sempre se expande automaticamente para nomes longos).",
-        category: ["⚡ EVM Advanced Group", "2. Painéis Set / Get", "Largura Mínima dos Painéis"],
+        tooltip: "Minimum usable width of a side rail when it is empty or holds short names (rails always grow to fit long names).",
+        category: ["⚡ EVM Advanced Group", "2. Set / Get Rails", "Minimum Rail Width"],
         onChange: (val) => {
             MIN_RAIL_INNER_W = Math.max(90, Number(val) || 140);
             recalcDerivedGeometry();
@@ -6468,50 +6494,52 @@ const EVM_SETTINGS_DEFS = [
     },
     {
         id: "EVMGroup.Rails.AutoNamingFormat",
-        name: "Formato de nomenclatura automática do SetNode ao conectar fio",
+        name: "SetNode auto-naming format when a link is connected",
         type: "combo",
-        options: ["<Grupo>_<TIPO>", "<TIPO>_<Grupo>", "Desativado"],
-        defaultValue: "<Grupo>_<TIPO>",
-        tooltip: "Padrão usado para batizar automaticamente o SetNode ancorado quando um fio é conectado a ele.",
-        category: ["⚡ EVM Advanced Group", "2. Painéis Set / Get", "Formato de Auto-Nomenclatura"],
+        options: NAMING_FORMAT_OPTIONS,
+        defaultValue: "group_type",
+        migrateDeprecatedValue: migrateLegacySetting,
+        tooltip: "Pattern used to name a docked SetNode automatically when a link is connected to it.",
+        category: ["⚡ EVM Advanced Group", "2. Set / Get Rails", "Auto-Naming Format"],
         onChange: (val) => {
-            EVM_CFG.autoNamingFormat = String(val || "<Grupo>_<TIPO>");
+            EVM_CFG.autoNamingFormat = migrateLegacySetting(val) || "group_type";
         },
     },
     {
         id: "EVMGroup.Rails.SyncRenameOnGroupTitle",
-        name: "Renomear SetNodes e GetNodes pareados ao renomear o título do grupo",
+        name: "Rename paired SetNodes and GetNodes when the group title changes",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Quando ativo, alterar o nome do EVM Advanced Group atualiza automaticamente o prefixo de todos os SetNodes ancorados naquele grupo e os GetNodes correspondentes no workflow.",
-        category: ["⚡ EVM Advanced Group", "2. Painéis Set / Get", "Sincronizar Renomeação"],
+        tooltip: "When enabled, renaming an EVM Advanced Group updates the prefix of every SetNode docked in it and of the matching GetNodes across the workflow.",
+        category: ["⚡ EVM Advanced Group", "2. Set / Get Rails", "Sync Rename"],
         onChange: (val) => {
             EVM_CFG.syncRenameOnGroupTitle = Boolean(val);
         },
     },
 
-    // 3. Aparência & Cabeçalho
+    // 3. Appearance & header
     {
         id: "EVMGroup.Appearance.DefaultColor",
-        name: "Cor padrão ao criar novos EVM Advanced Groups (Paleta ComfyUI)",
+        name: "Default color for new EVM Advanced Groups (ComfyUI palette)",
         type: "combo",
-        options: Object.keys(COLOR_OPTIONS_MAP),
-        defaultValue: "Pale Blue (Padrão ComfyUI)",
-        tooltip: "Cor inicial aplicada a novos grupos criados (usa a paleta oficial LGraphCanvas.node_colors do ComfyUI).",
-        category: ["⚡ EVM Advanced Group", "3. Aparência & Cabeçalho", "Cor Padrão"],
+        options: COLOR_OPTIONS,
+        defaultValue: "#3f789e",
+        migrateDeprecatedValue: migrateLegacySetting,
+        tooltip: "Initial color applied to new groups (uses ComfyUI's official LGraphCanvas.node_colors palette).",
+        category: ["⚡ EVM Advanced Group", "3. Appearance & Header", "Default Color"],
         onChange: (val) => {
-            DEFAULT_GROUP_COLOR = COLOR_OPTIONS_MAP[val] || "#3f789e";
+            DEFAULT_GROUP_COLOR = migrateLegacySetting(val) || "#3f789e";
             repaint();
         },
     },
     {
         id: "EVMGroup.Appearance.DefaultFontSize",
-        name: "Tamanho padrão da fonte do título (px)",
+        name: "Default title font size (px)",
         type: "slider",
         attrs: { min: 12, max: 24, step: 1 },
         defaultValue: 16,
-        tooltip: "Tamanho da fonte exibida na barra de título superior do EVM Advanced Group.",
-        category: ["⚡ EVM Advanced Group", "3. Aparência & Cabeçalho", "Tamanho da Fonte"],
+        tooltip: "Font size of the EVM Advanced Group title bar.",
+        category: ["⚡ EVM Advanced Group", "3. Appearance & Header", "Font Size"],
         onChange: (val) => {
             DEF_FONT_SIZE = Math.max(10, Math.min(28, Number(val) || 16));
             for (const g of ensureEvmGroups()) {
@@ -6522,12 +6550,12 @@ const EVM_SETTINGS_DEFS = [
     },
     {
         id: "EVMGroup.Appearance.TitleOpacity",
-        name: "Opacidade da barra de título do grupo (%)",
+        name: "Group title bar opacity (%)",
         type: "slider",
         attrs: { min: 25, max: 100, step: 5 },
         defaultValue: 78,
-        tooltip: "Transparência da barra de cabeçalho superior do EVM Advanced Group.",
-        category: ["⚡ EVM Advanced Group", "3. Aparência & Cabeçalho", "Opacidade do Título"],
+        tooltip: "Opacity of the EVM Advanced Group title bar.",
+        category: ["⚡ EVM Advanced Group", "3. Appearance & Header", "Title Opacity"],
         onChange: (val) => {
             DEF_TITLE_ALPHA = Math.max(0.15, Math.min(1, (Number(val) || 78) / 100));
             repaint();
@@ -6535,12 +6563,12 @@ const EVM_SETTINGS_DEFS = [
     },
     {
         id: "EVMGroup.Appearance.BodyOpacity",
-        name: "Opacidade do fundo do corpo do grupo (%)",
+        name: "Group body background opacity (%)",
         type: "slider",
         attrs: { min: 5, max: 65, step: 5 },
         defaultValue: 22,
-        tooltip: "Transparência do preenchimento interno do grupo.",
-        category: ["⚡ EVM Advanced Group", "3. Aparência & Cabeçalho", "Opacidade do Corpo"],
+        tooltip: "Opacity of the group's inner fill.",
+        category: ["⚡ EVM Advanced Group", "3. Appearance & Header", "Body Opacity"],
         onChange: (val) => {
             DEF_BODY_ALPHA = Math.max(0.03, Math.min(0.85, (Number(val) || 22) / 100));
             repaint();
@@ -6548,24 +6576,25 @@ const EVM_SETTINGS_DEFS = [
     },
     {
         id: "EVMGroup.Appearance.HeaderButtons",
-        name: "Exibição dos botões de ação no cabeçalho (Run, Mute, Bypass, Fold)",
+        name: "Header action buttons (Run, Mute, Bypass, Fold)",
         type: "combo",
-        options: Object.keys(HEADER_VIS_MAP),
-        defaultValue: "Sempre visíveis (Run, Mute, Bypass, Fold)",
-        tooltip: "Controla quais botões aparecem no canto superior direito do cabeçalho do EVM Advanced Group.",
-        category: ["⚡ EVM Advanced Group", "3. Aparência & Cabeçalho", "Botões do Cabeçalho"],
+        options: HEADER_VIS_OPTIONS,
+        defaultValue: "always",
+        migrateDeprecatedValue: migrateLegacySetting,
+        tooltip: "Controls which buttons appear in the top-right corner of the EVM Advanced Group header.",
+        category: ["⚡ EVM Advanced Group", "3. Appearance & Header", "Header Buttons"],
         onChange: (val) => {
-            EVM_CFG.headerBtnVis = HEADER_VIS_MAP[val] || "always";
+            EVM_CFG.headerBtnVis = migrateLegacySetting(val) || "always";
             repaint();
         },
     },
     {
         id: "EVMGroup.Appearance.ShowLinksWhenFolded",
-        name: "Exibir conexões externas quando o grupo estiver recolhido (Folded)",
+        name: "Show external links while a group is folded",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Mantém visíveis as linhas de ligação que entram ou saem de um EVM Advanced Group recolhido.",
-        category: ["⚡ EVM Advanced Group", "3. Aparência & Cabeçalho", "Conexões Quando Recolhido"],
+        tooltip: "Keeps the links entering or leaving a folded EVM Advanced Group visible.",
+        category: ["⚡ EVM Advanced Group", "3. Appearance & Header", "Links When Folded"],
         onChange: (val) => {
             EVM_CFG.showLinksWhenFolded = Boolean(val);
             for (const g of ensureEvmGroups()) {
@@ -6575,14 +6604,14 @@ const EVM_SETTINGS_DEFS = [
         },
     },
 
-    // 4. Barra de Ações (Selection Toolbox)
+    // 4. Action bar (Selection Toolbox)
     {
         id: "EVMGroup.Toolbox.ShowFloatingToolbar",
-        name: "Exibir barra flutuante de ações ao selecionar um grupo (Cor, Delete, Fold)",
+        name: "Show the floating action bar when a group is selected (Color, Delete, Fold)",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Mostra a barra pílula flutuante acima do EVM Advanced Group ou Pixaroma Group selecionado.",
-        category: ["⚡ EVM Advanced Group", "4. Barra de Ações (Toolbox)", "Barra Flutuante do Grupo"],
+        tooltip: "Shows the floating pill bar above the selected EVM Advanced Group or Pixaroma Group.",
+        category: ["⚡ EVM Advanced Group", "4. Action Bar (Toolbox)", "Floating Group Bar"],
         onChange: (val) => {
             EVM_CFG.showFloatingToolbar = Boolean(val);
             const bar = document.getElementById("evm-group-floating-bar");
@@ -6591,11 +6620,11 @@ const EVM_SETTINGS_DEFS = [
     },
     {
         id: "EVMGroup.Toolbox.ShowConvertInNativeToolbox",
-        name: "Exibir botão 'EVM Group' na Selection Toolbox nativa do ComfyUI",
+        name: "Show the 'EVM Group' button in ComfyUI's native Selection Toolbox",
         type: "boolean",
         defaultValue: true,
-        tooltip: "Adiciona o botão pílula 'EVM Group' na barra de seleção nativa do ComfyUI ao selecionar nodes ou grupos.",
-        category: ["⚡ EVM Advanced Group", "4. Barra de Ações (Toolbox)", "Botão na Selection Toolbox Nativa"],
+        tooltip: "Adds the 'EVM Group' pill button to ComfyUI's native selection bar when nodes or groups are selected.",
+        category: ["⚡ EVM Advanced Group", "4. Action Bar (Toolbox)", "Native Selection Toolbox Button"],
         onChange: (val) => {
             EVM_CFG.showConvertInNativeToolbox = Boolean(val);
         },
@@ -6906,11 +6935,11 @@ function ensureEvmResizePopover() {
     _evmResizePopoverEl.className = "evm-resize-popover-menu";
     _evmResizePopoverEl.setAttribute("role", "menu");
     _evmResizePopoverEl.innerHTML = `
-        <button type="button" class="evm-resize-popover-item" data-resize-mode="width" title="Igualar Largura (Horizontal) pelo maior selecionado">
+        <button type="button" class="evm-resize-popover-item" data-resize-mode="width" title="Match width to the widest selected item">
             <span class="evm-resize-popover-icon">${EVM_SVG_EQUAL_WIDTH}</span>
             <span>Horizontal</span>
         </button>
-        <button type="button" class="evm-resize-popover-item" data-resize-mode="height" title="Igualar Altura (Vertical) pelo maior selecionado">
+        <button type="button" class="evm-resize-popover-item" data-resize-mode="height" title="Match height to the tallest selected item">
             <span class="evm-resize-popover-icon">${EVM_SVG_EQUAL_HEIGHT}</span>
             <span>Vertical</span>
         </button>
@@ -7171,7 +7200,7 @@ function initEvmGroupFloatingBar() {
                 transform: scale(1.08);
             }
             button:has(.evm-toolbox-clear-color-pill-icon):hover::after {
-                content: "Limpar cores";
+                content: "Clear colors";
                 position: absolute;
                 left: 50%;
                 bottom: calc(100% + 9px);
@@ -7389,32 +7418,32 @@ function initEvmGroupFloatingBar() {
     floatingBar.style.display = "none";
     floatingBar.innerHTML = `
         <div class="evm-color-picker-wrap">
-            <button class="evm-tb-icon-btn evm-btn-colors" data-testid="color-picker-button" title="Cor do Grupo (Padrão ComfyUI)">
+            <button class="evm-tb-icon-btn evm-btn-colors" data-testid="color-picker-button" title="Group color (ComfyUI palette)">
                 <span class="evm-color-dot"></span>
                 <svg class="evm-color-chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </button>
             <div class="evm-comfy-color-strip" style="display:none;"></div>
         </div>
-        <button class="evm-tb-icon-btn evm-btn-clear-color" title="Limpar Cores (Grupo e Nós Internos)">
+        <button class="evm-tb-icon-btn evm-btn-clear-color" title="Clear colors (group and nodes inside)">
             <span class="evm-clear-color-dot">✕</span>
         </button>
-        <button class="evm-tb-icon-btn evm-btn-delete" title="Excluir Grupo (mantém nós)">
+        <button class="evm-tb-icon-btn evm-btn-delete" title="Delete group (keeps nodes)">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
         </button>
         <span class="evm-tb-divider"></span>
-        <button class="evm-tb-pill evm-pill-shot evm-btn-save" style="display:none;" title="Salvar Screenshot PNG">
+        <button class="evm-tb-pill evm-pill-shot evm-btn-save" style="display:none;" title="Save screenshot as PNG">
             <span>PNG</span>
         </button>
-        <button class="evm-tb-pill evm-pill-copy evm-btn-copy" style="display:none;" title="Copiar Screenshot para o Clipboard">
+        <button class="evm-tb-pill evm-pill-copy evm-btn-copy" style="display:none;" title="Copy screenshot to clipboard">
             <span>Copy</span>
         </button>
-        <button class="evm-tb-pill evm-pill-fold evm-btn-fold" title="Recolher / Expandir EVM Group">
+        <button class="evm-tb-pill evm-pill-fold evm-btn-fold" title="Fold / unfold EVM Group">
             <span>Fold</span>
         </button>
-        <button class="evm-tb-pill evm-pill-resize evm-btn-resize" style="display:none;" title="Igualar Tamanho (Horizontal / Vertical)">
+        <button class="evm-tb-pill evm-pill-resize evm-btn-resize" style="display:none;" title="Match size (width / height)">
             <span>Resize</span>
         </button>
-        <button class="evm-tb-pill evm-pill-evmgroup evm-btn-convert" title="Converter para EVM Group (Set/Get)">
+        <button class="evm-tb-pill evm-pill-evmgroup evm-btn-convert" title="Convert to EVM Group (Set/Get)">
             <span>EVM Group</span>
         </button>
     `;
@@ -7905,7 +7934,7 @@ app.registerExtension({
         {
             id: EVM_CLEAR_COLOR_TOOLBOX_CMD,
             label: "Clear colors of selected nodes and groups",
-            tooltip: "Limpar cores dos nós/grupos selecionados",
+            tooltip: "Clear the colors of the selected nodes and groups",
             icon: "evm-toolbox-clear-color-pill-icon",
             function: () => clearSelectionColors(),
         },
@@ -7919,7 +7948,7 @@ app.registerExtension({
         {
             id: EVM_GROUP_TOOLBOX_CMD,
             label: "Create or convert to EVM Advanced Group (Set/Get)",
-            tooltip: "Criar / Converter para EVM Advanced Group (GetNode / SetNode)",
+            tooltip: "Create or convert to an EVM Advanced Group (GetNode / SetNode)",
             icon: "evm-toolbox-group-pill-icon",
             function: () => triggerCreateOrConvertFromSelection(),
         },
@@ -7951,27 +7980,27 @@ app.registerExtension({
 
         const organizeSubmenu = [
             {
-                content: "⚡ Organizar Completo (Auto + Set/Get)",
+                content: "⚡ Full Organize (auto groups + Set/Get)",
                 callback: () => organizeCurrentWorkflow({ mode: "auto", wire_set_get: true, paint: true }),
             },
             {
-                content: "📐 Organizar Grupos Existentes (Manter Soltos)",
+                content: "📐 Organize Existing Groups (leave loose nodes)",
                 callback: () => organizeCurrentWorkflow({ mode: "existing", wire_set_get: true, paint: true }),
             },
             {
-                content: "🧲 Organizar + Adotar Nós Soltos (--adopt)",
+                content: "🧲 Organize + Adopt Loose Nodes",
                 callback: () => organizeCurrentWorkflow({ mode: "adopt", wire_set_get: true, paint: true }),
             },
             {
-                content: "🔄 Reagrupar Tudo do Zero (--regroup)",
+                content: "🔄 Regroup Everything From Scratch",
                 callback: () => organizeCurrentWorkflow({ mode: "regroup", wire_set_get: true, paint: true }),
             },
             {
-                content: "🔗 Organizar Sem Criar Set/Get (--no-wire-set-get)",
+                content: "🔗 Organize Without Creating Set/Get",
                 callback: () => organizeCurrentWorkflow({ mode: "auto", wire_set_get: false, paint: true }),
             },
             {
-                content: "🎨 Organizar Sem Alterar Cores (--no-paint)",
+                content: "🎨 Organize Without Changing Colors",
                 callback: () => organizeCurrentWorkflow({ mode: "auto", wire_set_get: true, paint: false }),
             },
         ];
@@ -7980,7 +8009,7 @@ app.registerExtension({
             organizeSubmenu.push(
                 null,
                 {
-                    content: "↩️ Desfazer Última Organização",
+                    content: "↩️ Undo Last Organize",
                     callback: () => undoLastWorkflowOrganize(),
                 }
             );
@@ -7990,10 +8019,10 @@ app.registerExtension({
             null,
             { content: "⚡ Add EVM Group (Set/Get)", callback: () => createEvmGroup(p) },
             {
-                content: "🪄 Organizar Workflow (Padrão Dj Edu)",
+                content: "🪄 Organize Workflow",
                 has_submenu: true,
                 submenu: {
-                    title: "Organizar Workflow",
+                    title: "Organize Workflow",
                     options: organizeSubmenu,
                 },
             },
@@ -8001,14 +8030,14 @@ app.registerExtension({
 
         if (_organizeUndoStack.length > 0) {
             items.push({
-                content: "↩️ Desfazer Última Organização",
+                content: "↩️ Undo Last Organize",
                 callback: () => undoLastWorkflowOrganize(),
             });
         }
 
         if (overPix) {
             items.push({
-                content: "⚡ Converter Pixaroma Group → EVM Group",
+                content: "⚡ Convert Pixaroma Group → EVM Group",
                 callback: () => convertPixaromaGroupToEvm(overPix),
             });
         }
@@ -8025,20 +8054,23 @@ app.registerExtension({
                 })),
             ];
 
-            items.push(
-                {
+            if (window.EVMColorPalette) {
+                items.push({
                     content: "🎨 EVM Color Palette (\\)",
                     callback: () => {
                         selectEvmGroup(overEvm);
-                        if (window.EVMColorPalette?.openForEvmGroup) {
+                        if (window.EVMColorPalette.openForEvmGroup) {
                             window.EVMColorPalette.openForEvmGroup(overEvm);
-                        } else if (window.EVMColorPalette?.openForSelection) {
+                        } else if (window.EVMColorPalette.openForSelection) {
                             window.EVMColorPalette.openForSelection();
                         }
                     },
-                },
+                });
+            }
+
+            items.push(
                 {
-                    content: "🎨 Color (Padrão ComfyUI)",
+                    content: "🎨 Color (ComfyUI palette)",
                     has_submenu: true,
                     submenu: {
                         title: "Group Color",
@@ -8046,7 +8078,7 @@ app.registerExtension({
                     },
                 },
                 {
-                    content: "🧹 Limpar Cores do Grupo e Nós",
+                    content: "🧹 Clear Group and Node Colors",
                     callback: () => {
                         setEvmGroupColor(overEvm, null);
                         for (const n of groupMemberNodes(overEvm)) {
@@ -8058,35 +8090,35 @@ app.registerExtension({
                     },
                 },
                 {
-                    content: `📐 Organizar Nós do Grupo (${Math.round(PAD / GRID)} quadradinhos)`,
+                    content: `📐 Tidy Group Nodes (${PAD}px spacing)`,
                     callback: () => {
                         tidyGroupCentralNodes(overEvm, curGraph());
                         markChanged();
                     },
                 },
-                { content: "➕ Adicionar GetNode (Esquerda)", callback: () => addDockedGetNode(overEvm) },
-                { content: "➕ Adicionar SetNode (Direita)", callback: () => addDockedSetNode(overEvm) },
+                { content: "➕ Add GetNode (left rail)", callback: () => addDockedGetNode(overEvm) },
+                { content: "➕ Add SetNode (right rail)", callback: () => addDockedSetNode(overEvm) },
                 {
-                    content: overEvm.leftRailOpen !== false ? "◀ Ocultar Painel GetNode" : "▶ Mostrar Painel GetNode",
+                    content: overEvm.leftRailOpen !== false ? "◀ Hide GetNode Rail" : "▶ Show GetNode Rail",
                     callback: () => toggleLeftRail(overEvm),
                 },
                 {
-                    content: overEvm.rightRailOpen !== false ? "▶ Ocultar Painel SetNode" : "◀ Mostrar Painel SetNode",
+                    content: overEvm.rightRailOpen !== false ? "▶ Hide SetNode Rail" : "◀ Show SetNode Rail",
                     callback: () => toggleRightRail(overEvm),
                 },
                 {
-                    content: overEvm.folded ? "🔽 Expandir EVM Group (Unfold)" : "🔼 Recolher EVM Group (Fold)",
+                    content: overEvm.folded ? "🔽 Unfold EVM Group" : "🔼 Fold EVM Group",
                     callback: () => toggleFoldEvmGroup(overEvm),
                 },
                 {
-                    content: overEvm.pinned ? "📌 Desafixar EVM Group (Unpin)" : "📌 Fixar EVM Group (Pin)",
+                    content: overEvm.pinned ? "📌 Unpin EVM Group" : "📌 Pin EVM Group",
                     callback: () => {
                         if (overEvm.pinned) delete overEvm.pinned;
                         else overEvm.pinned = true;
                         markChanged();
                     },
                 },
-                { content: "🗑️ Excluir EVM Group (mantém os nós)", callback: () => deleteEvmGroup(overEvm) }
+                { content: "🗑️ Delete EVM Group (keeps nodes)", callback: () => deleteEvmGroup(overEvm) }
             );
         }
 
@@ -8212,6 +8244,6 @@ app.registerExtension({
         };
         window.EVMAdvancedGroup = window.EVMGroupSetGet;
 
-        console.log("[ComfyUI-EVM-Advanced-Group] Inicializado com sucesso (Settings nativos ⚡ EVM Advanced Group + Grid 3 quadradinhos + Auto-Reflow).");
+        console.log("[ComfyUI-EVM-Advanced-Group] Loaded.");
     },
 });

@@ -1,154 +1,156 @@
 # ⚡ ComfyUI-EVM-Advanced-Group
 
-**EVM Advanced Group** é um sistema de containers de grupo inteligentes para o **ComfyUI**, projetado para manter workflows complexos limpos, modulares, sem fios cruzando o canvas ("spaghetti") e perfeitamente alinhados à grade nativa do ComfyUI.
+**EVM Advanced Group** is a smart group container for **ComfyUI**. It keeps complex workflows clean and modular, removes the "spaghetti" of links crossing the canvas, and keeps everything aligned to ComfyUI's native grid.
 
 ![EVM Advanced Group Architecture](./docs/evm_advanced_group_architecture.svg)
 
 ---
 
-## ✨ Principais Recursos (Key Features)
+## ✨ Key Features
 
-- **🗂️ Trilhos Laterais Inteligentes (`GetNode` & `SetNode`):**
-  - **Painel Esquerdo (`GetNode`):** concentra todas as entradas vindas de outros grupos (`+ Add GetNode`).
-  - **Painel Direito (`SetNode`):** concentra todas as saídas exportadas pelo grupo (`+ Add SetNode`).
-  - **Auto-Nomenclatura Inteligente:** ao conectar qualquer saída de um nó a um `SetNode` ancorado no painel direito, ele é automaticamente batizado como `<NomeDoGrupo>_<TIPO>` (ex.: `2_KSampler_Latent_LATENT`) e sincronizado em `widgets_values` e `widgets_values_named`.
-  - **Sincronização ao Renomear o Grupo:** dar duplo-clique no título do grupo e renomeá-lo atualiza automaticamente o prefixo de todos os `SetNode` daquele grupo e de todos os `GetNode` pareados no workflow inteiro!
-  - **Trilhos Retráteis (`◀` / `▶`):** oculte qualquer painel lateral que não estiver em uso mantendo a **Área Central imóvel no canvas**, com pílulas rápidas `▶ Get (N)` e `Set (N) ◀` no cabeçalho superior.
-- **📐 Geometria Canônica na Grade (`10px`) e Margens de `3 Quadradinhos` (`30px`):**
-  - Margem interna exata de **3 quadradinhos (`30px`)** em todos os lados — medida no topo a partir da **base da barra de título** (`g.y + 30px`) até o topo visual real dos nós (`pos[1] - 30px`).
-  - Espaçamento vertical de **3 quadradinhos livres (`30px`) + `30px` da barra de título = `60px`**, garantindo que a flag nativa do ComfyUI (`#ID` e tempo de execução acima do nó) nunca encoste no nó superior.
-- **🔄 Auto-Resize & Auto-Reflow em Tempo Real:**
-  - **Redimensionamento Horizontal e Vertical ao Vivo:** esticar qualquer nó horizontalmente ou verticalmente com o mouse reajusta em tempo real as colunas vizinhas e a largura/altura do grupo.
-  - **Suporte Completo a Minimizar/Maximizar (`Collapse`):** minimizar ou maximizar qualquer `GetNode`, `SetNode` ou nó central move automaticamente os nós abaixo para cima/baixo (sem sobreposição) e encolhe/expande a largura do painel lateral para o item mais largo.
-- **🎨 Sistema de Cores Nativo do ComfyUI (`LGraphCanvas.node_colors`):**
-  - Usa a paleta oficial de grupos do ComfyUI (*Pale Blue, Red, Brown, Green, Blue, Cyan, Purple, Yellow, Black*) com seletor visual `● ⌄` idêntico à Selection Toolbox nativa.
-- **🖱️ Multi-Seleção Completa e Conversão 1-Clique:**
-  - Suporte nativo a **seleção por retângulo (marquee)** em tempo real, **`Shift / Ctrl + Clique`** em qualquer ordem (grupos + nós ou múltiplos grupos), **`Ctrl + A`** e arraste conjunto sincronizado.
-  - Botão pílula **`EVM Group`** integrado diretamente na **Selection Toolbox nativa do ComfyUI** para agrupar nós selecionados ou converter grupos nativos / Pixaroma Groups com 1 clique.
-- **⚙️ Tela de Configurações Nativa (`⚡ EVM Advanced Group`):**
-  - 16 parâmetros configuráveis diretamente no modal **Settings (⚙️)** do ComfyUI.
+- **🗂️ Smart side rails (`GetNode` & `SetNode`):**
+  - **Left rail (`GetNode`):** holds every input coming from other groups (`+ Add GetNode`).
+  - **Right rail (`SetNode`):** holds every output the group exports (`+ Add SetNode`).
+  - **Automatic naming:** when you connect any node output to a `SetNode` docked in the right rail, it is renamed to `<GroupName>_<TYPE>` (e.g. `2_KSampler_Latent_LATENT`). The value is written to both `widgets_values` and `widgets_values_named`. The node's title shows the same name with a `Set_` prefix.
+  - **Rename sync:** double-click the group title and rename it; the prefix of every `SetNode` in the group, and of every paired `GetNode` in the whole workflow, is updated automatically.
+  - **Collapsible rails (`◀` / `▶`):** hide a rail you don't need while the **central area stays in place** on the canvas. Quick pills `▶ Get (N)` and `Set (N) ◀` stay in the header.
+- **📐 Grid-aligned geometry (`10px` grid, `30px` margins):**
+  - Inner padding of **3 grid cells (`30px`)** on every side, measured at the top from the **bottom of the title bar** (`g.y + 30px`) to the real visual top of the nodes (`pos[1] - 30px`).
+  - Vertical spacing of **30px free space + the 30px node title bar = 60px**, so ComfyUI's native badge above each node (`#ID` and execution time) never touches the node above it.
+- **🔄 Live auto-resize & auto-reflow:**
+  - **Live resizing:** stretch any node horizontally or vertically and the neighboring columns and the group's width/height adjust in real time.
+  - **Collapse support:** collapsing or expanding any `GetNode`, `SetNode` or central node moves the nodes below it up or down (no overlap) and shrinks or grows the rail to fit its widest item.
+  - **Collision avoidance:** when a group grows, neighboring groups are pushed away so nothing overlaps.
+- **🎨 Native ComfyUI colors (`LGraphCanvas.node_colors`):**
+  - Uses ComfyUI's official group palette (*Pale Blue, Red, Brown, Green, Blue, Cyan, Purple, Yellow, Black*) with a `● ⌄` color picker that matches the native Selection Toolbox.
+- **🖱️ Full multi-selection and one-click conversion:**
+  - Native **marquee selection**, **`Shift / Ctrl + Click`** in any order (groups + nodes, or several groups), **`Ctrl + A`**, and synchronized dragging.
+  - An **`EVM Group`** pill button in **ComfyUI's native Selection Toolbox** wraps the selected nodes, or converts native groups / Pixaroma Groups, in one click.
+- **🪄 Workflow organizer:** right-click the canvas → `🪄 Organize Workflow` to split a whole workflow into stage groups, wire them with `SetNode` / `GetNode`, and color each stage. `↩️ Undo Last Organize` restores the previous layout.
+- **⚙️ Native Settings panel (`⚡ EVM Advanced Group`):**
+  - 18 options directly in ComfyUI's **Settings (⚙️)** dialog.
 
 ---
 
-## 📦 Instalação (Installation)
+## 📦 Installation
 
-### Opção 1 — Via Git Clone
-Dentro da pasta `ComfyUI/custom_nodes/`, execute:
+Inside your `ComfyUI/custom_nodes/` folder, run:
 
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/eduvm/ComfyUI-EVM-Advanced-Group.git
 ```
 
-Reinicie o ComfyUI ou recarregue a página do navegador (`F5`).
+Restart ComfyUI and reload the browser page (`F5`).
 
-> **💡 Recomendado:** Para utilizar os botões `+ Add GetNode` e `+ Add SetNode` nos painéis laterais, tenha o pacote [**ComfyUI-KJNodes**](https://github.com/kijai/ComfyUI-KJNodes) instalado.
-
----
-
-## 🚀 Exemplos Práticos de Uso (Usage Examples)
-
-### Exemplo 1: Agrupar Nós Selecionados em 1 Clique
-1. Selecione um ou mais nós no canvas (arrastando o retângulo de seleção ou segurando `Shift + Clique`).
-2. Na **Selection Toolbox nativa** que aparece acima da seleção, clique no botão pílula azul **`EVM Group`** *(ou clique com o botão direito no canvas → `⚡ Add EVM Group (Set/Get)`)*.
-3. O **EVM Advanced Group** é criado envolvendo os nós e organizando-os automaticamente em colunas alinhadas à grade de `10px`, com margens e espaçamentos de **3 quadradinhos (`30px`)**.
-
-### Exemplo 2: Exportar e Importar Conexões Sem Fios Cruzando o Workflow (`SetNode` / `GetNode`)
-1. No grupo produtor (ex.: `1. Models & Conditioning`), clique em **`+ Add SetNode`** no topo do painel direito.
-2. Conecte a saída `MODEL` do seu `CheckpointLoaderSimple` na entrada do `SetNode`.
-3. O `SetNode` será automaticamente renomeado para **`Set_1_Models_Conditioning_MODEL`** e o painel direito se ajustará automaticamente à largura do texto.
-4. No próximo grupo (ex.: `2. KSampler & Latent`), clique em **`+ Add GetNode`** no painel esquerdo, selecione `1_Models_Conditioning_MODEL` no combo e conecte-o ao `KSampler`.
-5. Se um grupo não precisar de entradas no painel esquerdo (como o primeiro grupo do workflow), clique na seta **`◀`** do painel esquerdo para recolhê-lo — uma pílula compacta **`▶ Get`** ficará disponível no cabeçalho superior.
-
-### Exemplo 3: Converter um Grupo Nativo do ComfyUI ou Pixaroma Group
-1. Clique sobre qualquer **Grupo Nativo do ComfyUI** ou **Pixaroma Group** existente no seu workflow.
-2. Clique no botão **`EVM Group`** na barra de ações flutuante acima do grupo.
-3. O grupo original é instantaneamente convertido em um **EVM Advanced Group**, preservando seu título e cor original e alinhando todos os nós internos na regra dos 3 quadradinhos.
-
-### Exemplo 4: Executar, Silenciar (`Mute`), Ignorar (`Bypass`) ou Recolher (`Fold`) um Grupo Inteiro
-No canto superior direito da barra de título de cada **EVM Advanced Group**, você tem 4 botões de ação rápida + o contador de nós:
-- **▶ (Run Group):** executa no ComfyUI apenas os nós de saída (`SaveImage`, `PreviewImage`, etc.) contidos dentro daquele grupo.
-- **🔇 (Mute Group):** alterna o modo `Mute` de todos os nós centrais do grupo.
-- **⏭️ (Bypass Group):** alterna o modo `Bypass` de todos os nós centrais do grupo.
-- **🔼 / 🔽 (Fold / Unfold):** recolhe o grupo inteiro em uma barra compacta de `30px` de altura (ocultando os nós internos e exibindo uma barra de progresso verde em tempo real na própria barra quando o grupo estiver executando!).
+> **💡 Required for the side rails:** `GetNode` and `SetNode` come from [**ComfyUI-KJNodes**](https://github.com/kijai/ComfyUI-KJNodes). Install it to use the `+ Add GetNode` and `+ Add SetNode` buttons. Grouping, layout and colors work without it.
 
 ---
 
-## 📂 Workflow de Exemplo Incluso (`example_workflows/`)
+## 🚀 Usage Examples
 
-Este pacote inclui um workflow completo de demonstração pronto para abrir no ComfyUI:
+### Example 1: Group the selected nodes in one click
+1. Select one or more nodes on the canvas (drag a selection rectangle or hold `Shift + Click`).
+2. In the **native Selection Toolbox** that appears above the selection, click the blue **`EVM Group`** pill *(or right-click the canvas → `⚡ Add EVM Group (Set/Get)`)*.
+3. An **EVM Advanced Group** is created around the nodes and arranges them in columns aligned to the `10px` grid, with `30px` margins and spacing.
+
+### Example 2: Pass data between groups without crossing links (`SetNode` / `GetNode`)
+1. In the producer group (e.g. `1. Models & Conditioning`), click **`+ Add SetNode`** at the top of the right rail.
+2. Connect the `MODEL` output of your `CheckpointLoaderSimple` to the `SetNode` input.
+3. The `SetNode` is renamed to **`1_Models_Conditioning_MODEL`** (its title shows `Set_1_Models_Conditioning_MODEL`), and the right rail resizes to fit the text.
+4. In the next group (e.g. `2. KSampler & Latent`), click **`+ Add GetNode`** in the left rail, pick `1_Models_Conditioning_MODEL` in the combo, and connect it to the `KSampler`.
+5. If a group needs no inputs (like the first group of the workflow), click the **`◀`** arrow on the left rail to collapse it. A compact **`▶ Get`** pill stays available in the header.
+
+### Example 3: Convert a native ComfyUI group or a Pixaroma Group
+1. Click any **native ComfyUI group** or **Pixaroma Group** in your workflow.
+2. Click the **`EVM Group`** button in the floating action bar above the group.
+3. The group is converted into an **EVM Advanced Group**, keeping its title and color, and its nodes are aligned with the 30px spacing rule.
+
+### Example 4: Run, mute, bypass or fold a whole group
+The top-right corner of every **EVM Advanced Group** title bar has 4 quick action buttons plus the node count:
+- **▶ (Run Group):** queues only the output nodes (`SaveImage`, `PreviewImage`, etc.) inside that group.
+- **🔇 (Mute Group):** toggles `Mute` on every central node in the group.
+- **⏭️ (Bypass Group):** toggles `Bypass` on every central node in the group.
+- **🔼 / 🔽 (Fold / Unfold):** collapses the whole group into a compact `30px` bar, hiding the nodes inside. While the group runs, a green progress bar is drawn on the folded bar.
+
+---
+
+## 📂 Example Workflow (`example_workflows/`)
+
+This package ships a complete demo workflow you can open in ComfyUI:
 
 - 📄 **[`example_workflows/EVM_Advanced_Group_Example_Pipeline.json`](./example_workflows/EVM_Advanced_Group_Example_Pipeline.json)**
 
-Ele demonstra um pipeline modular dividido em **3 EVM Advanced Groups** conectados exclusivamente por painéis laterais `SetNode` / `GetNode`:
-1. **`1. Models & Conditioning`** *(Pale Blue — painel esquerdo recolhido `▶ Get`, painel direito com 4 `SetNode` auto-nomeados: `MODEL`, `CONDITIONING`, `CONDITIONING_2`, `VAE`)*.
-2. **`2. KSampler & Latent`** *(Purple — painel esquerdo com 3 `GetNode`, área central com `EmptyLatentImage` + `KSampler`, painel direito exportando `2_KSampler_Latent_LATENT`)*.
-3. **`3. VAE Decode & Output`** *(Green — painel esquerdo recebendo `LATENT` e `VAE`, área central com `VAEDecode` + `SaveImage`, painel direito recolhido `Set ◀`)*.
+It shows a modular pipeline split into **3 EVM Advanced Groups** connected only through `SetNode` / `GetNode` rails:
+1. **`1. Models & Conditioning`** *(Pale Blue — left rail collapsed `▶ Get`, right rail with 4 auto-named `SetNode`s: `MODEL`, `CONDITIONING`, `CONDITIONING_2`, `VAE`)*.
+2. **`2. KSampler & Latent`** *(Purple — left rail with 3 `GetNode`s, central area with `EmptyLatentImage` + `KSampler`, right rail exporting `2_KSampler_Latent_LATENT`)*.
+3. **`3. VAE Decode & Output`** *(Green — left rail receiving `LATENT` and `VAE`, central area with `VAEDecode` + `SaveImage`, right rail collapsed `Set ◀`)*.
 
-> **Como abrir:** Arraste o arquivo `example_workflows/EVM_Advanced_Group_Example_Pipeline.json` para dentro da janela do ComfyUI ou acesse o menu **Workflow → Browse Templates → EVM Advanced Group**.
+> **How to open:** drag `example_workflows/EVM_Advanced_Group_Example_Pipeline.json` into the ComfyUI window, or use **Workflow → Browse Templates → EVM Advanced Group**.
 
 ---
 
-## ⚙️ Configurações Nativas no ComfyUI (`Settings → ⚡ EVM Advanced Group`)
+## ⚙️ Settings (`Settings → ⚡ EVM Advanced Group`)
 
-Abra as configurações do ComfyUI (**⚙️ Settings**) e clique na aba **`⚡ EVM Advanced Group`** para personalizar o comportamento em tempo real:
+Open ComfyUI's settings (**⚙️ Settings**) and select the **`⚡ EVM Advanced Group`** tab. Changes apply immediately.
 
-| Seção | Configuração | Padrão | Descrição |
+| Section | Setting | Default | Description |
 |---|---|---|---|
-| **1. Layout & Grade** | **Margem interna do grupo** | `3` (`30px`) | Distância em quadradinhos da grade (`10px`) entre as bordas/cabeçalho do grupo e os nós internos (`1` a `8`). |
-| **1. Layout & Grade** | **Espaçamento vertical entre nodes** | `3` (`30px` livres) | Espaço livre vertical entre nós da mesma coluna (`30px` livres + `30px` da barra de título/tag `#ID` = `60px`). |
-| **1. Layout & Grade** | **Espaçamento horizontal entre colunas** | `3` (`30px`) | Distância horizontal entre sub-colunas de nós na Área Central (`1` a `10` quadradinhos). |
-| **1. Layout & Grade** | **Tolerância horizontal de coluna** | `100px` | Diferença máxima no eixo X para agrupar nós na mesma coluna vertical (`30px` a `240px`). |
-| **1. Layout & Grade** | **Auto-Reflow dinâmico** | `Ativado` | Reposiciona vizinhos e redimensiona o grupo ao vivo ao esticar ou minimizar/maximizar qualquer nó. |
-| **1. Layout & Grade** | **Snap to Grid (`10px`)** | `Ativado` | Mantém todas as coordenadas e dimensões alinhadas em múltiplos exatos de `10px`. |
-| **2. Painéis Set / Get** | **Painel esquerdo (`GetNode`) aberto por padrão** | `Ativado` | Define se novos grupos iniciam com o trilho esquerdo aberto. |
-| **2. Painéis Set / Get** | **Painel direito (`SetNode`) aberto por padrão** | `Ativado` | Define se novos grupos iniciam com o trilho direito aberto. |
-| **2. Painéis Set / Get** | **Largura interna mínima dos painéis** | `140px` | Largura útil mínima dos trilhos laterais quando vazios ou com nomes curtos (`100px` a `260px`). |
-| **2. Painéis Set / Get** | **Formato de auto-nomenclatura** | `<Grupo>_<TIPO>` | Formato usado ao conectar um fio a um `SetNode` ancorado (`<Grupo>_<TIPO>`, `<TIPO>_<Grupo>` ou `Desativado`). |
-| **2. Painéis Set / Get** | **Sincronizar renomeação no título** | `Ativado` | Renomeia automaticamente os `SetNode` e `GetNode` pareados quando o título do grupo é alterado. |
-| **3. Aparência & Cabeçalho** | **Cor padrão de novos grupos** | `Pale Blue (#3f789e)` | Cor inicial da paleta padrão do ComfyUI para novos grupos. |
-| **3. Aparência & Cabeçalho** | **Tamanho padrão da fonte do título** | `16px` | Tamanho da fonte do cabeçalho superior (`12px` a `24px`). |
-| **3. Aparência & Cabeçalho** | **Opacidade da barra de título** | `78%` | Transparência da barra de cabeçalho superior (`25%` a `100%`). |
-| **3. Aparência & Cabeçalho** | **Opacidade do fundo do corpo** | `22%` | Transparência do preenchimento interno do grupo (`5%` a `65%`). |
-| **3. Aparência & Cabeçalho** | **Botões de ação no cabeçalho** | `Sempre visíveis` | Exibe `Run, Mute, Bypass, Fold` sempre, apenas no hover/seleção, ou modo compacto (`Fold`). |
-| **3. Aparência & Cabeçalho** | **Exibir conexões quando recolhido** | `Ativado` | Mantém visíveis os fios externos conectados a grupos recolhidos (`Folded`). |
-| **4. Barra de Ações** | **Barra flutuante do grupo** | `Ativado` | Exibe a barra pílula flutuante (`Cor ● ⌄`, `Delete 🗑️`, `Fold`) acima do grupo selecionado. |
-| **4. Barra de Ações** | **Botão na Selection Toolbox nativa** | `Ativado` | Exibe o botão pílula `EVM Group` na barra de seleção nativa do ComfyUI. |
+| **1. Layout & Grid** | **Inner Padding** | `3` (`30px`) | Space, in `10px` grid cells, between the group's borders/header and the nodes inside (`1` to `8`). |
+| **1. Layout & Grid** | **Vertical Gap** | `3` (`30px` free) | Free vertical space between nodes in the same column (`30px` free + `30px` title bar/`#ID` badge = `60px`). |
+| **1. Layout & Grid** | **Horizontal Gap** | `3` (`30px`) | Horizontal space between node columns in the central area (`1` to `10` cells). |
+| **1. Layout & Grid** | **Column Tolerance** | `100px` | Maximum X-axis difference for two nodes to be treated as the same column (`30px` to `240px`). |
+| **1. Layout & Grid** | **Auto-Reflow** | `On` | Moves neighbors and resizes the group live when any node is resized or collapsed/expanded. |
+| **1. Layout & Grid** | **Group Collision Avoidance** | `On` | Pushes neighboring groups away when a group grows. |
+| **1. Layout & Grid** | **Snap to Grid (`10px`)** | `On` | Keeps every position and size at exact multiples of `10px`. |
+| **2. Set / Get Rails** | **Left Rail (GetNode)** | `On` | Whether new groups start with the left rail open. |
+| **2. Set / Get Rails** | **Right Rail (SetNode)** | `On` | Whether new groups start with the right rail open. |
+| **2. Set / Get Rails** | **Minimum Rail Width** | `140px` | Minimum usable width of the rails when empty or with short names (`100px` to `260px`). |
+| **2. Set / Get Rails** | **Auto-Naming Format** | `<Group>_<TYPE>` | Name given to a docked `SetNode` when a link is connected (`<Group>_<TYPE>`, `<TYPE>_<Group>` or `Off`). |
+| **2. Set / Get Rails** | **Sync Rename** | `On` | Renames the paired `SetNode`s and `GetNode`s when the group title changes. |
+| **3. Appearance & Header** | **Default Color** | `Pale Blue (#3f789e)` | Initial color for new groups, from ComfyUI's default palette. |
+| **3. Appearance & Header** | **Font Size** | `16px` | Title bar font size (`12px` to `24px`). |
+| **3. Appearance & Header** | **Title Opacity** | `78%` | Opacity of the title bar (`25%` to `100%`). |
+| **3. Appearance & Header** | **Body Opacity** | `22%` | Opacity of the group's inner fill (`5%` to `65%`). |
+| **3. Appearance & Header** | **Header Buttons** | `Always visible` | Shows `Run, Mute, Bypass, Fold` always, only on hover/selection, or in compact mode (`Fold` only). |
+| **3. Appearance & Header** | **Links When Folded** | `On` | Keeps external links visible on folded groups. |
+| **4. Action Bar (Toolbox)** | **Floating Group Bar** | `On` | Shows the floating pill bar (`Color ● ⌄`, `Delete 🗑️`, `Fold`) above the selected group. |
+| **4. Action Bar (Toolbox)** | **Native Selection Toolbox Button** | `On` | Shows the `EVM Group` pill button in ComfyUI's native selection bar. |
 
 ---
 
-## ⌨️ Atalhos de Mouse e Teclado (Shortcuts)
+## ⌨️ Mouse & Keyboard Shortcuts
 
-| Ação | Atalho / Interação |
+| Action | Shortcut / Interaction |
 |---|---|
-| **Renomear grupo (e sincronizar Set/Get)** | `Duplo-Clique` na barra de título do grupo |
-| **Selecionar múltiplos grupos e/ou nós** | Arrastar retângulo de seleção (marquee) ou `Shift + Clique` / `Ctrl + Clique` em qualquer ordem |
-| **Selecionar todos os grupos e nós** | `Ctrl + A` |
-| **Mover múltiplos grupos e nós juntos** | Arrastar pelo cabeçalho de qualquer grupo selecionado ou arrastar qualquer nó co-selecionado |
-| **Redimensionar grupo manualmente** | Arrastar qualquer um dos 4 cantos do grupo |
-| **Excluir grupo(s) selecionado(s) (mantendo os nós)** | Tecla `Delete` ou `Backspace` (ou ícone `🗑️` na barra flutuante) |
+| **Rename group (and sync Set/Get)** | `Double-click` the group title bar |
+| **Select several groups and/or nodes** | Drag a selection rectangle (marquee) or `Shift + Click` / `Ctrl + Click` in any order |
+| **Select all groups and nodes** | `Ctrl + A` |
+| **Move several groups and nodes together** | Drag the header of any selected group, or drag any co-selected node |
+| **Resize a group manually** | Drag any of the group's 4 corners |
+| **Delete selected group(s) (keeping the nodes)** | `Delete` or `Backspace` (or the `🗑️` icon in the floating bar) |
 
 ---
 
-## 🧩 API JavaScript Global (`window.EVMAdvancedGroup`)
+## 🧩 Global JavaScript API (`window.EVMAdvancedGroup`)
 
-Outras extensões do ComfyUI podem interagir programaticamente com o **EVM Advanced Group** através de `window.EVMAdvancedGroup` (ou pelo alias compatível `window.EVMGroupSetGet`):
+Other ComfyUI extensions can drive **EVM Advanced Group** through `window.EVMAdvancedGroup` (or the compatible alias `window.EVMGroupSetGet`):
 
 ```javascript
-// Criar um novo EVM Advanced Group a partir dos nós atualmente selecionados
+// Create an EVM Advanced Group from the currently selected nodes
 const group = window.EVMAdvancedGroup.createGroup(null, {
-    title: "Meu Grupo Modular",
+    title: "My Modular Group",
     color: "#3f789e",
 });
 
-// Reorganizar os nós internos do grupo selecionado na grade de 3 quadradinhos (30px)
+// Re-arrange the group's nodes on the 30px grid
 window.EVMAdvancedGroup.tidyGroup(group);
 
-// Adicionar GetNode (esquerda) ou SetNode (direita) via código
+// Add a GetNode (left) or SetNode (right) from code
 window.EVMAdvancedGroup.addGetNode(group);
 window.EVMAdvancedGroup.addSetNode(group);
 
-// Alternar visibilidade dos painéis laterais ou recolher (fold) o grupo
+// Toggle the side rails or fold the group
 window.EVMAdvancedGroup.toggleLeftRail(group);
 window.EVMAdvancedGroup.toggleRightRail(group);
 window.EVMAdvancedGroup.toggleFold(group);
@@ -156,6 +158,6 @@ window.EVMAdvancedGroup.toggleFold(group);
 
 ---
 
-## 📄 Licença
+## 📄 License
 
-Distribuído sob a licença **MIT**. Veja [`LICENSE`](./LICENSE) para mais informações.
+Released under the **MIT** license. See [`LICENSE`](./LICENSE) for details.

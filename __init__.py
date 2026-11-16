@@ -1,8 +1,7 @@
 """
 ComfyUI-EVM-Advanced-Group
-Container de grupo avançado para ComfyUI com trilhos laterais inteligentes de GetNode / SetNode,
-alinhamento canônico na grade (3 quadradinhos = 30px), auto-reflow em tempo real,
-sistema de cores nativo do ComfyUI, multi-seleção completa e tela de configurações nativa.
+Advanced group containers for ComfyUI: GetNode / SetNode side rails, 30px grid alignment,
+live auto-reflow, the native ComfyUI color palette, multi-selection and a native Settings panel.
 """
 
 WEB_DIRECTORY = "./js"

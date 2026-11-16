@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-evm-advanced-group"
-description = "EVM Advanced Group for ComfyUI: Smart group containers with auto-sizing GetNode/SetNode side rails, 3-grid-square canonical alignment, live auto-reflow on node resize/collapse, native ComfyUI color palette, marquee/Shift multi-selection, and native ComfyUI Settings panel."
-version = "2.1.0"
+description = "Smart group containers for ComfyUI: auto-sizing GetNode/SetNode side rails, 30px grid alignment, live auto-reflow on node resize/collapse, a one-click workflow organizer, the native ComfyUI color palette, multi-selection, and a native Settings panel."
+version = "2.2.0"
 license = { text = "MIT" }
 readme = "README.md"
 dependencies = []
